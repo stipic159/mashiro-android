@@ -1,0 +1,38 @@
+[package]
+name = "mashiro"
+version = "0.3.0"
+description = "Mashiro - клиент Яндекс Музыки"
+authors = ["aeviww"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "mashiro_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset", "image-png"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["macros", "net", "rt", "sync", "time"] }
+md-5 = "0.10"
+sha2 = "0.10"
+hmac = "0.12"
+base64 = "0.22"
+hex = "0.4"
+tokio-tungstenite = { version = "0.21", features = ["rustls-tls-webpki-roots"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+mashiro-together-crypto = { path = "crates/together-crypto", version = "0.1.0" }
+ed25519-dalek = "2"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
+tauri-plugin-global-shortcut = "2"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
