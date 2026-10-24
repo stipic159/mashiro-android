@@ -4,7 +4,6 @@ import path from "node:path";
 
 const rootDir = process.cwd();
 const isRelease = process.argv.includes("--release");
-const forceStrip = process.argv.includes("--strip");
 const noStrip = process.argv.includes("--no-strip");
 const shouldStrip = !noStrip;
 
@@ -17,12 +16,65 @@ console.log(`   Mode: ${isRelease ? "Release" : "Debug"}`);
 console.log(`   Symbols: ${shouldStrip ? "Stripped (--strip-all)" : "Preserved (unstripped for debugging)"}`);
 console.log(`========================================\n`);
 
+function resolveAndroidHome() {
+  if (process.env.ANDROID_HOME && fs.existsSync(process.env.ANDROID_HOME)) {
+    return process.env.ANDROID_HOME;
+  }
+  if (process.env.ANDROID_SDK_ROOT && fs.existsSync(process.env.ANDROID_SDK_ROOT)) {
+    return process.env.ANDROID_SDK_ROOT;
+  }
+  const defaultLocal = path.join(process.env.LOCALAPPDATA || "", "Android", "Sdk");
+  if (fs.existsSync(defaultLocal)) {
+    return defaultLocal;
+  }
+  throw new Error("ANDROID_HOME or ANDROID_SDK_ROOT not set and no standard Android SDK found.");
+}
+
+function resolveNdkHome(androidHome) {
+  if (process.env.NDK_HOME && fs.existsSync(process.env.NDK_HOME)) {
+    return process.env.NDK_HOME;
+  }
+  if (process.env.ANDROID_NDK_HOME && fs.existsSync(process.env.ANDROID_NDK_HOME)) {
+    return process.env.ANDROID_NDK_HOME;
+  }
+  const ndkParent = path.join(androidHome, "ndk");
+  if (fs.existsSync(ndkParent)) {
+    const versions = fs.readdirSync(ndkParent).filter((v) => fs.statSync(path.join(ndkParent, v)).isDirectory());
+    if (versions.length > 0) {
+      versions.sort().reverse();
+      return path.join(ndkParent, versions[0]);
+    }
+  }
+  throw new Error("NDK_HOME not set and no NDK directory found in Android SDK.");
+}
+
+function resolveJavaHome() {
+  if (process.env.JAVA_HOME && fs.existsSync(process.env.JAVA_HOME)) {
+    return process.env.JAVA_HOME;
+  }
+  try {
+    const javaExe = execSync(process.platform === "win32" ? "where.exe java" : "which java", { encoding: "utf8" }).trim().split("\n")[0];
+    if (javaExe) {
+      return path.dirname(path.dirname(javaExe.trim()));
+    }
+  } catch {}
+  throw new Error("JAVA_HOME is not set and java binary could not be found.");
+}
+
+const androidHome = resolveAndroidHome();
+const ndkHome = resolveNdkHome(androidHome);
+const javaHome = resolveJavaHome();
+
+console.log(`   JAVA_HOME:    ${javaHome}`);
+console.log(`   ANDROID_HOME: ${androidHome}`);
+console.log(`   NDK_HOME:     ${ndkHome}\n`);
+
 const env = {
   ...process.env,
-  JAVA_HOME: process.env.JAVA_HOME || "C:\\Program Files\\Microsoft\\jdk-21.0.10.7-hotspot\\",
-  ANDROID_HOME: process.env.ANDROID_HOME || "F:\\android-sdk",
-  NDK_HOME: process.env.NDK_HOME || "F:\\android-sdk\\ndk\\30.0.16248370",
-  RUSTFLAGS: "--sysroot=R:",
+  JAVA_HOME: javaHome,
+  ANDROID_HOME: androidHome,
+  ANDROID_SDK_ROOT: androidHome,
+  NDK_HOME: ndkHome,
 };
 
 // 1. Build Frontend SPA
@@ -72,7 +124,6 @@ try {
 // Ensure .so is in jniLibs
 const jniDir = path.join(rootDir, "src-tauri", "gen", "android", "app", "src", "main", "jniLibs", "arm64-v8a");
 const jniSo = path.join(jniDir, "libmashiro_lib.so");
-const stripExe = path.join(env.NDK_HOME, "toolchains", "llvm", "prebuilt", "windows-x86_64", "bin", "llvm-strip.exe");
 
 if (!fs.existsSync(builtSo)) {
   throw new Error(`Target native library not found: ${builtSo}`);
@@ -81,8 +132,21 @@ if (!fs.existsSync(builtSo)) {
 fs.mkdirSync(jniDir, { recursive: true });
 const originalSizeMb = (fs.statSync(builtSo).size / (1024 * 1024)).toFixed(2);
 
-if (shouldStrip && fs.existsSync(stripExe)) {
-  console.log("✂️ Stripping debug symbols with llvm-strip...");
+function findStripExe(ndk) {
+  const llvmBin = path.join(ndk, "toolchains", "llvm", "prebuilt");
+  if (!fs.existsSync(llvmBin)) return null;
+  const hosts = fs.readdirSync(llvmBin);
+  for (const host of hosts) {
+    const candidate = path.join(llvmBin, host, "bin", process.platform === "win32" ? "llvm-strip.exe" : "llvm-strip");
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+const stripExe = findStripExe(ndkHome);
+
+if (shouldStrip && stripExe) {
+  console.log(`✂️ Stripping debug symbols with llvm-strip (${stripExe})...`);
   try {
     execSync(`"${stripExe}" --strip-all "${builtSo}"`, { stdio: "inherit" });
     fs.copyFileSync(builtSo, jniSo);
@@ -90,7 +154,7 @@ if (shouldStrip && fs.existsSync(stripExe)) {
     const strippedSizeMb = (fs.statSync(jniSo).size / (1024 * 1024)).toFixed(2);
     console.log(`✨ Stripped libmashiro_lib.so size: ${strippedSizeMb} MB (was ${originalSizeMb} MB)`);
     // Delete existing APK to ensure Gradle repackages with the stripped .so
-    const oldApk = path.join(rootDir, "src-tauri", "gen", "android", "app", "build", "outputs", "apk", "arm64", profile, "app-arm64-debug.apk");
+    const oldApk = path.join(rootDir, "src-tauri", "gen", "android", "app", "build", "outputs", "apk", "arm64", profile, `app-arm64-${profile}.apk`);
     if (fs.existsSync(oldApk)) fs.unlinkSync(oldApk);
   } catch (stripErr) {
     console.warn("Warning: llvm-strip failed:", stripErr.message);

@@ -1,21 +1,21 @@
 {
-  "name": "mashiro-desktop",
+  "name": "mashiro-android",
   "private": true,
-  "version": "b0.3",
-  "description": "mashiro - клиент я.музыки",
+  "version": "0.3.0",
+  "description": "Mashiro - клиент Яндекс Музыки для Android",
   "type": "module",
   "scripts": {
     "dev": "quasar dev",
     "build": "quasar build",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "type-check": "vue-tsc --noEmit",
     "android:init": "tauri android init",
     "android:dev": "tauri android dev",
     "android:build": "node scripts/build-android.mjs",
     "android:build:debug": "node scripts/build-android.mjs --debug",
     "android:build:release": "node scripts/build-android.mjs --release",
-    "apk:server": "node scripts/serve-apk.cjs"
+    "android:install:debug": "adb install -r src-tauri/gen/android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk",
+    "android:install:release": "adb install -r src-tauri/gen/android/app/build/outputs/apk/arm64/release/app-arm64-release.apk",
+    "android:logcat": "adb logcat -s Mashiro:* MediaSession:* AndroidRuntime:*"
   },
   "dependencies": {
     "@iconify/vue": "^5.0.4",
@@ -30,9 +30,9 @@
     "@quasar/app-vite": "^2.0.6",
     "@tauri-apps/cli": "^2.1.0",
     "autoprefixer": "^10.4.20",
+    "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
-    "vue-tsc": "^2.1.10",
-    "tailwindcss": "^3.4.17"
+    "vue-tsc": "^2.1.10"
   },
   "engines": {
     "node": "^18 || ^20 || ^22 || ^24",

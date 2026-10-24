@@ -8,15 +8,33 @@ dist/
 dist-ssr/
 out/
 *.local
+build/
 
 # quasar / vite
 .quasar/
 quasar.config.*.temporary.compiled*
 .vite/
 
-# rust / tauri
+# rust / cargo / tauri
+target/
 src-tauri/target/
 src-tauri/gen/schemas/
+
+# android gradle & ndk artifacts
+.gradle/
+.cxx/
+.externalNativeBuild/
+captures/
+local.properties
+*.apk
+*.aab
+src-tauri/gen/android/.gradle/
+src-tauri/gen/android/app/build/
+src-tauri/gen/android/build/
+src-tauri/gen/android/.tauri/
+src-tauri/gen/android/.cxx/
+src-tauri/gen/android/app/src/main/jniLibs/
+src-tauri/gen/android/app/src/main/assets/assets/
 
 # env
 .env
@@ -39,15 +57,10 @@ coverage/
 .vscode/*
 !.vscode/extensions.json
 .idea/
+*.iml
 *.sw?
 
 # os
 .DS_Store
 Thumbs.db
-
-# android gradle build
-src-tauri/gen/android/.gradle/
-src-tauri/gen/android/app/build/
-src-tauri/gen/android/build/
-src-tauri/gen/android/.tauri/
-src-tauri/gen/android/app/src/main/jniLibs/
+Desktop.ini
