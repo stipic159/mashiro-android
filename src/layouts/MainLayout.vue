@@ -8,7 +8,7 @@
     <MobileHeader v-if="isMobile" />
 
     <!-- Desktop header -->
-    <q-header v-else-if="!panels.hidden && !panels.mini" class="topbar">
+    <q-header v-else-if="!panels.hidden" class="topbar">
       <div
         class="titlebar"
         @mousedown="startWindowDrag"
@@ -104,7 +104,7 @@
     </q-header>
 
     <q-drawer
-      v-if="!isMobile && !panels.hidden && !panels.mini"
+      v-if="!isMobile && !panels.hidden"
       :model-value="true"
       show-if-above
       side="left"
@@ -271,7 +271,7 @@
     </q-drawer>
 
     <q-drawer
-      v-if="!isMobile && !panels.hidden && !panels.mini"
+      v-if="!isMobile && !panels.hidden"
       v-model="rightPanel"
       side="right"
       :width="300"
@@ -371,7 +371,7 @@
     </q-drawer>
 
     <q-page-container
-      v-if="!panels.hidden && !panels.mini"
+      v-if="!panels.hidden"
       :style="isMobile ? { paddingBottom: '124px', position: 'relative' } : { position: 'relative' }"
     >
       <router-view v-slot="{ Component, route: current }">
@@ -389,13 +389,11 @@
 
     <!-- Desktop player footer -->
     <q-footer
-      v-if="!isMobile && !panels.hidden && !panels.mini"
+      v-if="!isMobile && !panels.hidden"
       style="background: var(--bg); border-top: 1px solid var(--line)"
     >
       <PlayerBar />
     </q-footer>
-
-    <MiniPlayer v-if="!isMobile && panels.mini && !panels.hidden" />
 
     <!-- Mobile floating mini player and bottom navigation -->
     <template v-if="isMobile">
@@ -425,7 +423,6 @@ import ArtistsLine from "@/components/ArtistsLine.vue";
 import TrackMenu from "@/components/TrackMenu.vue";
 import FullscreenPlayer from "@/components/FullscreenPlayer.vue";
 import LyricsPanel from "@/components/LyricsPanel.vue";
-import MiniPlayer from "@/components/MiniPlayer.vue";
 import PlayerBar from "@/components/PlayerBar.vue";
 import TogetherDock from "@/components/together/TogetherDock.vue";
 import TrackLyricsDialog from "@/components/TrackLyricsDialog.vue";

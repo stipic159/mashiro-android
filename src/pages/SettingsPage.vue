@@ -94,7 +94,6 @@ import GeniusSection from "@/components/settings/sections/GeniusSection.vue";
 import HotkeysSection from "@/components/settings/sections/HotkeysSection.vue";
 import LayoutSection from "@/components/settings/sections/LayoutSection.vue";
 import LyricsSection from "@/components/settings/sections/LyricsSection.vue";
-import MiniPlayerSection from "@/components/settings/sections/MiniPlayerSection.vue";
 import PlayerSection from "@/components/settings/sections/PlayerSection.vue";
 import PlaylistToolsSection from "@/components/settings/sections/PlaylistToolsSection.vue";
 import TogetherSection from "@/components/settings/sections/TogetherSection.vue";
@@ -144,14 +143,6 @@ const sections = [
     group: "Плеер",
     hint: "качество громкость воспроизведение",
     component: PlayerSection,
-  },
-  {
-    id: "mini",
-    label: "Мини-плеер",
-    icon: "mingcute:miniplayer-fill",
-    group: "Плеер",
-    hint: "маленькое окно поверх всех",
-    component: MiniPlayerSection,
   },
   {
     id: "equalizer",
@@ -232,7 +223,7 @@ const isMobileDevice = Platform.is.mobile || Platform.is.android;
 const visibleSections = computed(() => {
   if (isMobileDevice) {
     // Hide desktop-only features on mobile
-    return sections.filter((s) => !["mini", "hotkeys"].includes(s.id));
+    return sections.filter((s) => !["hotkeys"].includes(s.id));
   }
   return sections;
 });

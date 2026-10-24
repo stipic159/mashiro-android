@@ -5,31 +5,22 @@ import {
   defaultInterfaceSettings,
 } from "./defaults";
 import type {
-  MiniButtonId,
-  MiniButtonSlots,
   PlayerButtonId,
   PlayerButtonSlots,
   PlayerZone,
 } from "./playerButtons";
 import {
-  defaultMiniButtons,
   defaultPlayerButtonSlots,
-  miniButtonOrder,
   playerButtonOrder,
 } from "./playerButtons";
 
 export type {
-  MiniButtonId,
-  MiniButtonSlots,
   PlayerButtonId,
   PlayerButtonSlots,
   PlayerZone,
 } from "./playerButtons";
 export {
-  defaultMiniButtons,
   defaultPlayerButtonSlots,
-  miniButtonCatalog,
-  miniButtonOrder,
   playerButtonCatalog,
   playerButtonOrder,
 } from "./playerButtons";
@@ -42,8 +33,6 @@ export type { Palette, ThemeName } from "./themes";
 export { accentColors, themeNames, themePalettes } from "./themes";
 
 const STORAGE_KEY = "mashiro.interface";
-
-const lockedMiniButtons = new Set<MiniButtonId>(["prev", "play", "next"]);
 
 function sanitizeOrder<T extends string>(
   saved: unknown,
@@ -77,17 +66,9 @@ function load(): InterfaceSettings {
       ...defaultPlayerButtonSlots,
       ...(saved.playerButtons || {}),
     } as PlayerButtonSlots;
-    merged.miniButtons = {
-      ...defaultMiniButtons,
-      ...(saved.miniButtons || {}),
-    } as MiniButtonSlots;
     merged.playerOrder = sanitizeOrder(saved.playerOrder, playerButtonOrder);
-    merged.miniOrder = sanitizeOrder(saved.miniOrder, miniButtonOrder);
     merged.playerEditMode = false;
     merged.playerButtons.play = "center";
-    merged.miniButtons.play = true;
-    merged.miniButtons.prev = true;
-    merged.miniButtons.next = true;
     return merged;
   } catch {
     return { ...defaultInterfaceSettings };
@@ -161,10 +142,6 @@ export const useUiStore = defineStore("ui", {
       return sanitizeOrder(this.settings.playerOrder, playerButtonOrder);
     },
 
-    miniOrderList(): MiniButtonId[] {
-      return sanitizeOrder(this.settings.miniOrder, miniButtonOrder);
-    },
-
     movePlayerButton(id: PlayerButtonId, zone: PlayerZone, index: number) {
       if (id === "play" && zone !== "center") return;
 
@@ -197,15 +174,6 @@ export const useUiStore = defineStore("ui", {
       this.apply();
     },
 
-    moveMiniButton(id: MiniButtonId, index: number) {
-      const order = this.miniOrderList().filter((x) => x !== id);
-      const raw = Number.isFinite(index) ? Math.round(index) : order.length;
-      const clamped = Math.max(0, Math.min(raw, order.length));
-      order.splice(clamped, 0, id);
-      this.settings.miniOrder = order;
-      this.apply();
-    },
-
     setPlayerZone(id: PlayerButtonId, zone: PlayerZone) {
       if (id === "play") return;
       this.settings.playerButtons = {
@@ -215,25 +183,9 @@ export const useUiStore = defineStore("ui", {
       this.apply();
     },
 
-    activeMiniButtons(): MiniButtonId[] {
-      return this.miniOrderList().filter(
-        (id) => lockedMiniButtons.has(id) || this.settings.miniButtons[id],
-      );
-    },
-
-    setMiniButton(id: MiniButtonId, on: boolean) {
-      if (lockedMiniButtons.has(id)) return;
-      this.settings.miniButtons = { ...this.settings.miniButtons, [id]: on };
-      this.apply();
-    },
-
     resetPlayerButtons() {
-      const d = defaultInterfaceSettings;
       this.settings.playerButtons = { ...defaultPlayerButtonSlots };
-      this.settings.miniButtons = { ...defaultMiniButtons };
       this.settings.playerOrder = [...playerButtonOrder];
-      this.settings.miniOrder = [...miniButtonOrder];
-      this.settings.miniShowTime = d.miniShowTime;
       this.apply();
     },
 
@@ -248,22 +200,6 @@ export const useUiStore = defineStore("ui", {
       this.settings.playerProgressThickness = d.playerProgressThickness;
       this.settings.playerShowTimes = d.playerShowTimes;
       this.settings.playerMetaWidth = d.playerMetaWidth;
-      this.apply();
-    },
-
-    resetMiniLayout() {
-      const d = defaultInterfaceSettings;
-      this.settings.miniOpacity = d.miniOpacity;
-      this.settings.miniCoverSize = d.miniCoverSize;
-      this.settings.miniIconSize = d.miniIconSize;
-      this.settings.miniGap = d.miniGap;
-      this.settings.miniPadding = d.miniPadding;
-      this.settings.miniVolumeSlider = d.miniVolumeSlider;
-      this.settings.miniVolumeHeight = d.miniVolumeHeight;
-      this.settings.miniShowTime = d.miniShowTime;
-      this.settings.miniVisualizer = d.miniVisualizer;
-      this.settings.miniWidth = d.miniWidth;
-      this.settings.miniHeight = d.miniHeight;
       this.apply();
     },
 

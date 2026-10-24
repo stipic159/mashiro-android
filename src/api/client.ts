@@ -237,17 +237,6 @@ export const api = {
 
   clearGlobalHotkeys: () => call<void>("clear_global_hotkeys"),
 
-  enterMiniPlayer: (width?: number, height?: number) =>
-    call<void>("enter_mini_player", {
-      width: width ?? null,
-      height: height ?? null,
-    }),
-
-  resizeMiniPlayer: (width: number, height: number) =>
-    call<void>("resize_mini_player", { width, height }),
-
-  exitMiniPlayer: () => call<void>("exit_mini_player"),
-
   exportTextFile: (name: string, content: string, dir?: string | null) =>
     call<string>("export_text_file", { name, content, dir: dir || null }),
 

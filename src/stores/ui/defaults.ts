@@ -1,13 +1,9 @@
 import type {
-  MiniButtonId,
-  MiniButtonSlots,
   PlayerButtonId,
   PlayerButtonSlots,
 } from "./playerButtons";
 import {
-  defaultMiniButtons,
   defaultPlayerButtonSlots,
-  miniButtonOrder,
   playerButtonOrder,
 } from "./playerButtons";
 import type { ThemeName } from "./themes";
@@ -49,9 +45,7 @@ export interface InterfaceSettings {
   showPlaylistCovers: boolean;
   showPlayerArtwork: boolean;
   playerButtons: PlayerButtonSlots;
-  miniButtons: MiniButtonSlots;
   playerOrder: PlayerButtonId[];
-  miniOrder: MiniButtonId[];
   playerHeight: number;
   playerCoverSize: number;
   playerIconSize: number;
@@ -62,17 +56,6 @@ export interface InterfaceSettings {
   playerShowTimes: boolean;
   playerEditMode: boolean;
   playerMetaWidth: number;
-  miniShowTime: boolean;
-  miniVisualizer: boolean;
-  miniOpacity: number;
-  miniCoverSize: number;
-  miniIconSize: number;
-  miniGap: number;
-  miniPadding: number;
-  miniVolumeSlider: boolean;
-  miniVolumeHeight: number;
-  miniWidth: number;
-  miniHeight: number;
   playerVisualizer: boolean;
   lyricsFontSize: number;
   lyricsLineHeight: number;
@@ -142,9 +125,7 @@ export const defaultInterfaceSettings: InterfaceSettings = {
   showPlaylistCovers: true,
   showPlayerArtwork: true,
   playerButtons: { ...defaultPlayerButtonSlots },
-  miniButtons: { ...defaultMiniButtons },
   playerOrder: [...playerButtonOrder],
-  miniOrder: [...miniButtonOrder],
   playerHeight: 78,
   playerCoverSize: 48,
   playerIconSize: 18,
@@ -155,17 +136,6 @@ export const defaultInterfaceSettings: InterfaceSettings = {
   playerShowTimes: true,
   playerEditMode: false,
   playerMetaWidth: 260,
-  miniShowTime: true,
-  miniVisualizer: true,
-  miniOpacity: 100,
-  miniCoverSize: 38,
-  miniIconSize: 15,
-  miniGap: 6,
-  miniPadding: 10,
-  miniVolumeSlider: true,
-  miniVolumeHeight: 40,
-  miniWidth: 396,
-  miniHeight: 152,
   playerVisualizer: true,
   lyricsFontSize: 36,
   lyricsLineHeight: 1.18,

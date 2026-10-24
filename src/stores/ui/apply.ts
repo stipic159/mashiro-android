@@ -91,12 +91,6 @@ export function applyInterfaceSettings(settings: InterfaceSettings): void {
     "--player-progress-width": `${settings.playerProgressWidth}%`,
     "--player-progress-thickness": `${settings.playerProgressThickness}px`,
     "--player-meta-width": `${settings.playerMetaWidth}px`,
-    "--mini-opacity": `${settings.miniOpacity / 100}`,
-    "--mini-cover": `${settings.miniCoverSize}px`,
-    "--mini-icon": `${settings.miniIconSize}px`,
-    "--mini-gap": `${settings.miniGap}px`,
-    "--mini-pad": `${settings.miniPadding}px`,
-    "--mini-volume-height": `${settings.miniVolumeHeight}px`,
   };
 
   for (const [name, value] of Object.entries(vars)) {

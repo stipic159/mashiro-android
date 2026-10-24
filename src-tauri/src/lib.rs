@@ -3,7 +3,6 @@ mod files;
 mod genius;
 mod hotkeys;
 mod lrclib;
-mod mini;
 mod oauth;
 mod proxy;
 mod state;
@@ -142,9 +141,6 @@ pub fn run() {
             tray::quit_app,
             hotkeys::set_global_hotkeys,
             hotkeys::clear_global_hotkeys,
-            mini::enter_mini_player,
-            mini::resize_mini_player,
-            mini::exit_mini_player,
             together::commands::together_host,
             together::commands::together_join,
             together::commands::together_leave,
