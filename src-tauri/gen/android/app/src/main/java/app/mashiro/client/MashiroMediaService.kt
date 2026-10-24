@@ -134,11 +134,20 @@ class MashiroMediaService : MediaSessionService() {
             }
         }
 
-        fun isPlaying(): Boolean = cachedIsPlaying
+        fun isPlaying(): Boolean {
+            val srv = instance ?: return cachedIsPlaying
+            return if (srv::exoPlayer.isInitialized) srv.exoPlayer.isPlaying else cachedIsPlaying
+        }
 
-        fun getCurrentPosition(): Long = cachedPositionMs
+        fun getCurrentPosition(): Long {
+            val srv = instance ?: return cachedPositionMs
+            return if (srv::exoPlayer.isInitialized) srv.exoPlayer.currentPosition else cachedPositionMs
+        }
 
-        fun getDuration(): Long = cachedDurationMs
+        fun getDuration(): Long {
+            val srv = instance ?: return cachedDurationMs
+            return if (srv::exoPlayer.isInitialized && srv.exoPlayer.duration > 0) srv.exoPlayer.duration else cachedDurationMs
+        }
     }
 
     override fun onCreate() {
@@ -209,6 +218,9 @@ class MashiroMediaService : MediaSessionService() {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 when (playbackState) {
                     Player.STATE_ENDED -> {
+                        cachedIsPlaying = false
+                        stopProgressTracker()
+                        listener?.onPlaybackStateChanged(false, "ended")
                         listener?.onTrackEnded()
                     }
                     Player.STATE_BUFFERING -> {
@@ -314,13 +326,16 @@ class MashiroMediaService : MediaSessionService() {
         stopProgressTracker()
         val runnable = object : Runnable {
             override fun run() {
-                val player = exoPlayer
-                if (player.isPlaying) {
-                    val pos = player.currentPosition
-                    val dur = player.duration
-                    cachedPositionMs = pos
-                    val validDur = if (dur > 0) dur else cachedDurationMs
-                    if (dur > 0) cachedDurationMs = dur
+                val srv = instance ?: return
+                if (!srv::exoPlayer.isInitialized) return
+                val player = srv.exoPlayer
+                val isPlaying = player.isPlaying || (player.playWhenReady && player.playbackState == Player.STATE_READY)
+                val pos = player.currentPosition
+                val dur = player.duration
+                cachedPositionMs = pos
+                val validDur = if (dur > 0) dur else cachedDurationMs
+                if (dur > 0) cachedDurationMs = dur
+                if (isPlaying || cachedIsPlaying) {
                     listener?.onProgress(pos, validDur)
                     handler.postDelayed(this, 250)
                 }

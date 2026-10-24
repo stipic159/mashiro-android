@@ -52,6 +52,24 @@ class FullscreenPayload {
 @TauriPlugin
 class MediaPlugin(private val activity: Activity) : Plugin(activity) {
 
+    private var mWebView: android.webkit.WebView? = null
+
+    override fun load(webView: android.webkit.WebView) {
+        super.load(webView)
+        this.mWebView = webView
+    }
+
+    fun emitEvent(eventName: String, data: JSObject) {
+        trigger(eventName, data)
+        val json = data.toString()
+        activity.runOnUiThread {
+            mWebView?.evaluateJavascript(
+                "(function() { window.dispatchEvent(new CustomEvent('$eventName', { detail: $json })); })();",
+                null
+            )
+        }
+    }
+
     init {
         instance = this
         MashiroMediaService.listener = object : MashiroMediaService.Companion.MediaEventListener {
@@ -60,7 +78,7 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity) {
                     put("isPlaying", isPlaying)
                     put("state", state)
                 }
-                trigger("media-playback-state", data)
+                emitEvent("media-playback-state", data)
             }
 
             override fun onProgress(positionMs: Long, durationMs: Long) {
@@ -68,18 +86,18 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity) {
                     put("positionMs", positionMs)
                     put("durationMs", durationMs)
                 }
-                trigger("media-progress", data)
+                emitEvent("media-progress", data)
             }
 
             override fun onTrackEnded() {
-                trigger("media-ended", JSObject())
+                emitEvent("media-ended", JSObject())
             }
 
             override fun onMediaButtonAction(action: String) {
                 val data = JSObject().apply {
                     put("action", action)
                 }
-                trigger("media-action", data)
+                emitEvent("media-action", data)
             }
         }
     }
@@ -261,7 +279,7 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity) {
 
         fun handleBackPress(): Boolean {
             if (isFullscreenOpen) {
-                instance?.trigger("android-back-pressed", JSObject())
+                instance?.emitEvent("android-back-pressed", JSObject())
                 return true
             }
             return false
