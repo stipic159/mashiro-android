@@ -49,6 +49,18 @@ import { useTogetherStore } from "@/stores/together/index";
 import type { LyricsSource } from "@/stores/ui/defaults";
 import { DEFAULT_DISCORD_CLIENT_ID, useUiStore } from "@/stores/ui/index";
 import { artistNames } from "@/lib/format";
+import {
+  initNativeAudio,
+  isNativeAudio,
+  nativePause,
+  nativePlay,
+  nativeResume,
+  nativeSeek,
+  nativeSetFullscreen,
+  nativeSetPlaybackRate,
+  nativeSetRepeat,
+  nativeSetVolume,
+} from "@/lib/nativeAudio";
 import { setTrayTooltip } from "@/lib/tray";
 import { resetPresenceSignature, syncDiscordPresence } from "./presence";
 import { loadSession, saveSession } from "./session";
@@ -65,6 +77,7 @@ const log = createLogger("player");
 
 interface PrefetchEntry {
   url: string;
+  rawUrl?: string;
   codec: string | null;
   bitrate: number | null;
   local: boolean;
@@ -145,6 +158,8 @@ interface PlayerState {
 let presenceTimer: number | null = null;
 let lastSessionSave = 0;
 let lastProgress = 0;
+let seekingUntil = 0;
+let seekingTarget: number | null = null;
 let lastMediaSync = 0;
 let mediaBound = false;
 let normBound = false;
@@ -215,6 +230,7 @@ export const usePlayerStore = defineStore("player", {
 
   getters: {
     hasNext: (s) => {
+      if (s.isWave && Boolean(s.current)) return true;
       if (s.index < s.queue.length - 1 || s.repeat === "all") return true;
       if (!s.queue.length) return false;
       const ui = useUiStore().settings;
@@ -254,6 +270,62 @@ export const usePlayerStore = defineStore("player", {
     },
 
     bind() {
+      if (isNativeAudio) {
+        void initNativeAudio({
+          onPlaybackState: (isPlaying, state) => {
+            this.isPlaying = isPlaying;
+            updatePlaybackState(isPlaying, Boolean(this.current));
+            updatePositionState(this.duration, this.progress, this.playbackRate);
+          },
+          onProgress: (posMs, durMs) => {
+            const currentSec = posMs / 1000;
+            if (seekingTarget !== null) {
+              if (Math.abs(currentSec - seekingTarget) < 2.0 || Date.now() > seekingUntil) {
+                seekingTarget = null;
+              } else {
+                return;
+              }
+            }
+            const previous = lastProgress;
+            this.progress = currentSec;
+            if (durMs > 0) {
+              const durSec = durMs / 1000;
+              if (durSec > 0 && isFinite(durSec)) {
+                this.duration = durSec;
+              }
+            }
+            lastProgress = this.progress;
+
+            const delta = this.progress - previous;
+            if (delta > 0 && delta < 6 && this.isPlaying) {
+              useStatsStore().tick(delta);
+            }
+          },
+          onEnded: () => {
+            if (useSleepStore().onTrackEnded()) return;
+            if (useTogetherStore().isGuest) return;
+            void this.next(true);
+          },
+          onMediaButtonAction: (action) => {
+            if (action === "next") void this.next();
+            else if (action === "prev") void this.prev();
+            else if (action === "like" && this.current) void this.like();
+          },
+          onBackPressed: () => {
+            if (this.fullscreen) {
+              this.fullscreen = false;
+            }
+          },
+        });
+
+        watch(
+          () => this.fullscreen,
+          (open) => {
+            void nativeSetFullscreen(open);
+          }
+        );
+      }
+
       if (useUiStore().settings.censorBypass) void ensureCensorList();
       audio.volume = this.muted ? 0 : this.volume;
       audio.playbackRate = this.playbackRate;
@@ -263,8 +335,12 @@ export const usePlayerStore = defineStore("player", {
       }
       audio.ontimeupdate = () => {
         const previous = lastProgress;
-        this.progress = audio.currentTime;
-        this.duration = audio.duration || 0;
+        if (isFinite(audio.currentTime) && !isNaN(audio.currentTime)) {
+          this.progress = audio.currentTime;
+        }
+        if (isFinite(audio.duration) && !isNaN(audio.duration) && audio.duration > 0) {
+          this.duration = audio.duration;
+        }
         lastProgress = this.progress;
 
         if (Date.now() - lastMediaSync > 1000) {
@@ -392,8 +468,14 @@ export const usePlayerStore = defineStore("player", {
               void safePlay();
             }
           },
-          pause: () => audio.pause(),
-          stop: () => audio.pause(),
+          pause: () => {
+            if (isNativeAudio) void nativePause().catch(() => {});
+            audio.pause();
+          },
+          stop: () => {
+            if (isNativeAudio) void nativePause().catch(() => {});
+            audio.pause();
+          },
           next: () => void this.next(),
           prev: () => void this.prev(),
           seekTo: (time) => this.seek(time),
@@ -770,6 +852,7 @@ export const usePlayerStore = defineStore("player", {
         if (ready) {
           prefetched.delete(track.id);
           source = ready.url;
+          rawStreamUrl = ready.rawUrl || "";
           this.playingLocal = ready.local;
           this.censorReplaced = ready.censored;
           this.currentCodec = ready.codec;
@@ -806,6 +889,7 @@ export const usePlayerStore = defineStore("player", {
           }
         }
 
+        let rawStreamUrl = "";
         if (!source) {
           const stream = await log.time(`stream ${track.id}`, () =>
             api.stream(track.id, this.quality),
@@ -814,6 +898,7 @@ export const usePlayerStore = defineStore("player", {
           this.currentCodec = stream.codec;
           this.currentBitrate = stream.bitrate;
           this.currentSource = stream.source;
+          rawStreamUrl = stream.url;
           source = proxyStream(stream.url);
           logQuality({
             title: track.title,
@@ -827,26 +912,65 @@ export const usePlayerStore = defineStore("player", {
         if (!isCurrentToken(token)) return;
         const target = this.muted ? 0 : this.volume;
         cancelFade(fadeMs > 0 && autoplay ? 0 : target);
-        audio.src = source;
-        audio.playbackRate = this.playbackRate;
-        useEqualizerStore().apply();
-        if (startAt > 0) {
-          const seekOnce = () => {
-            audio.removeEventListener("loadedmetadata", seekOnce);
-            try {
-              audio.currentTime = startAt;
-            } catch {}
-          };
-          audio.addEventListener("loadedmetadata", seekOnce);
-        }
-        if (autoplay) {
-          await safePlay(token);
-          if (fadeMs > 0 && isCurrentToken(token)) {
-            void fadeIn(target, Math.min(fadeMs, 2500));
+
+        if (isNativeAudio) {
+          try {
+            await nativePlay({
+              id: track.id,
+              title: track.title,
+              artist: artistNames(track.artists),
+              album: track.album_title,
+              coverUrl: track.cover_url,
+              streamUrl: rawStreamUrl || source,
+              startPositionMs: Math.round(startAt * 1000),
+            });
+            void nativeSetRepeat(this.repeat);
+            this.isPlaying = autoplay;
+          } catch (nativeErr) {
+            log.warn("nativePlay failed, falling back to HTML5 audio:", nativeErr);
+            audio.src = rawStreamUrl || source;
+            audio.playbackRate = this.playbackRate;
+            if (startAt > 0) {
+              const seekOnce = () => {
+                audio.removeEventListener("loadedmetadata", seekOnce);
+                try {
+                  audio.currentTime = startAt;
+                } catch {}
+              };
+              audio.addEventListener("loadedmetadata", seekOnce);
+            }
+            if (autoplay) {
+              await safePlay(token);
+              if (fadeMs > 0 && isCurrentToken(token)) {
+                void fadeIn(target, Math.min(fadeMs, 2500));
+              }
+            } else {
+              audio.load();
+              this.isPlaying = false;
+            }
           }
         } else {
-          audio.load();
-          this.isPlaying = false;
+          audio.src = source;
+          audio.playbackRate = this.playbackRate;
+          useEqualizerStore().apply();
+          if (startAt > 0) {
+            const seekOnce = () => {
+              audio.removeEventListener("loadedmetadata", seekOnce);
+              try {
+                audio.currentTime = startAt;
+              } catch {}
+            };
+            audio.addEventListener("loadedmetadata", seekOnce);
+          }
+          if (autoplay) {
+            await safePlay(token);
+            if (fadeMs > 0 && isCurrentToken(token)) {
+              void fadeIn(target, Math.min(fadeMs, 2500));
+            }
+          } else {
+            audio.load();
+            this.isPlaying = false;
+          }
         }
         this.persistSession();
         void this.syncTray();
@@ -958,6 +1082,7 @@ export const usePlayerStore = defineStore("player", {
             const stream = await api.stream(next.id, this.quality);
             rememberPrefetch(next.id, {
               url: proxyStream(stream.url),
+              rawUrl: stream.url,
               codec: stream.codec,
               bitrate: stream.bitrate,
               local: false,
@@ -1206,11 +1331,17 @@ export const usePlayerStore = defineStore("player", {
       const next = order[(order.indexOf(this.repeat) + 1) % order.length];
       this.repeat = next ?? "off";
       this.persist();
+      if (isNativeAudio) {
+        void nativeSetRepeat(this.repeat);
+      }
     },
 
     setRepeat(mode: RepeatMode) {
       this.repeat = mode;
       this.persist();
+      if (isNativeAudio) {
+        void nativeSetRepeat(this.repeat);
+      }
     },
 
     toggleShuffle() {
@@ -1248,6 +1379,18 @@ export const usePlayerStore = defineStore("player", {
         void this.loadCurrent({ startAt: this.progress, autoplay: true });
         return;
       }
+      if (isNativeAudio) {
+        if (this.isPlaying) {
+          void nativePause().catch(() => {});
+          audio.pause();
+          this.isPlaying = false;
+        } else {
+          void nativeResume().catch(() => {});
+          if (audio.src && audio.paused) void safePlay();
+          this.isPlaying = true;
+        }
+        return;
+      }
       if (audio.paused) void safePlay();
       else audio.pause();
     },
@@ -1255,6 +1398,11 @@ export const usePlayerStore = defineStore("player", {
     async next(auto = false) {
       if (useTogetherStore().isGuest) return;
       if (auto && this.repeat === "one") {
+        if (isNativeAudio) {
+          void nativeSeek(0);
+          void nativeResume();
+          return;
+        }
         audio.currentTime = 0;
         await safePlay();
         return;
@@ -1296,6 +1444,7 @@ export const usePlayerStore = defineStore("player", {
       if (ui.autoWaveOnQueueEnd && (await this.continueWithWave())) return;
 
       this.isPlaying = false;
+      if (isNativeAudio) void nativePause().catch(() => {});
       audio.pause();
     },
 
@@ -1400,6 +1549,7 @@ export const usePlayerStore = defineStore("player", {
     },
 
     watchStall() {
+      if (isNativeAudio) return;
       if (!this.current || audio.paused || this.loading || this.pendingResume) {
         stallAt = audio.currentTime;
         stallSince = 0;
@@ -1501,7 +1651,11 @@ export const usePlayerStore = defineStore("player", {
 
     async prev() {
       if (this.progress > 3) {
-        audio.currentTime = 0;
+        if (isNativeAudio) {
+          void nativeSeek(0);
+        } else {
+          audio.currentTime = 0;
+        }
         return;
       }
       if (this.hasPrev) {
@@ -1515,6 +1669,11 @@ export const usePlayerStore = defineStore("player", {
       const target = Math.max(0, Math.min(seconds, limit));
       this.progress = target;
       lastProgress = target;
+      seekingTarget = target;
+      seekingUntil = Date.now() + 2500;
+      if (isNativeAudio) {
+        void nativeSeek(target);
+      }
       try {
         audio.currentTime = target;
       } catch {}
@@ -1528,7 +1687,11 @@ export const usePlayerStore = defineStore("player", {
     setVolume(v: number) {
       this.volume = v;
       this.muted = v === 0;
-      audio.volume = v;
+      if (isNativeAudio) {
+        void nativeSetVolume(v);
+      } else {
+        audio.volume = v;
+      }
       this.persist();
     },
 
@@ -1556,6 +1719,35 @@ export const usePlayerStore = defineStore("player", {
       this.queue.push(track);
       this.sourceQueue = [...this.queue];
       Notify.create({ message: "Добавил в конец очереди" });
+    },
+
+    jumpTo(index: number) {
+      if (index >= 0 && index < this.queue.length) {
+        this.index = index;
+        void this.loadCurrent();
+      }
+    },
+
+    removeFromQueue(index: number) {
+      if (index < 0 || index >= this.queue.length) return;
+      this.queue.splice(index, 1);
+      this.sourceQueue = [...this.queue];
+      if (index === this.index) {
+        if (this.index >= this.queue.length) this.index = this.queue.length - 1;
+        void this.loadCurrent();
+      } else if (index < this.index) {
+        this.index -= 1;
+      }
+    },
+
+    clearQueue() {
+      this.queue = [];
+      this.sourceQueue = [];
+      this.index = -1;
+      this.current = null;
+      this.isPlaying = false;
+      if (isNativeAudio) void nativePause().catch(() => {});
+      audio.pause();
     },
 
     async waveByTrack(track: Track) {

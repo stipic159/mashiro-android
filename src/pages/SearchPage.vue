@@ -1,7 +1,7 @@
 <template>
-  <q-page class="scroll-page">
-    <q-scroll-area class="scroll-page-area">
-      <div class="scroll-page-inner">
+  <q-page class="scroll-page search-page">
+    <q-scroll-area class="scroll-page-area" :visible="false">
+      <div class="scroll-page-inner search-page-inner">
         <div class="h1">Поиск</div>
 
         <div class="suggest-wrap q-mt-lg">
@@ -49,8 +49,8 @@
         <template v-else-if="result">
           <template v-if="result.artists.length">
             <div class="h2 q-mt-xl q-mb-md">Артисты</div>
-            <div class="row q-col-gutter-md">
-              <div v-for="a in result.artists" :key="a.id" class="col-auto">
+            <div class="row no-wrap overflow-auto q-gutter-md q-pb-sm hide-scrollbar" style="max-width: 100%; -webkit-overflow-scrolling: touch;">
+              <div v-for="a in result.artists" :key="a.id" class="col-auto" style="flex: 0 0 auto;">
                 <div
                   class="card text-center"
                   style="width: 132px"
@@ -73,8 +73,8 @@
 
           <template v-if="genius.ready && genius.people.length">
             <div class="h2 q-mt-xl q-mb-md">Авторы и продюсеры</div>
-            <div class="row q-col-gutter-md">
-              <div v-for="p in genius.people" :key="p.id" class="col-auto">
+            <div class="row no-wrap overflow-auto q-gutter-md q-pb-sm hide-scrollbar" style="max-width: 100%; -webkit-overflow-scrolling: touch;">
+              <div v-for="p in genius.people" :key="p.id" class="col-auto" style="flex: 0 0 auto;">
                 <div
                   class="card text-center"
                   style="width: 132px"
@@ -100,8 +100,8 @@
 
           <template v-if="result.albums.length">
             <div class="h2 q-mt-xl q-mb-md">Альбомы</div>
-            <div class="row q-col-gutter-md">
-              <div v-for="al in result.albums" :key="al.id" class="col-auto">
+            <div class="row no-wrap overflow-auto q-gutter-md q-pb-sm hide-scrollbar" style="max-width: 100%; -webkit-overflow-scrolling: touch;">
+              <div v-for="al in result.albums" :key="al.id" class="col-auto" style="flex: 0 0 auto;">
                 <div
                   class="card"
                   style="width: 150px"
@@ -281,3 +281,24 @@ onBeforeUnmount(() => {
   clearTimeout(blurTimer);
 });
 </script>
+
+<style scoped>
+.search-page {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+.search-page-inner {
+  max-width: 100vw;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+</style>

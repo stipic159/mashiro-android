@@ -1,6 +1,10 @@
+import { Platform } from "quasar";
+
 export const audio = new Audio();
 audio.preload = "auto";
-audio.crossOrigin = "anonymous";
+if (!Platform.is.android && !Platform.is.mobile) {
+  audio.crossOrigin = "anonymous";
+}
 
 // Скрытый элемент для предзагрузки следующего трека (gapless без пауз).
 let warm: HTMLAudioElement | null = null;
@@ -12,7 +16,9 @@ export function warmNext(url: string): void {
   if (!warm) {
     warm = new Audio();
     warm.preload = "auto";
-    warm.crossOrigin = "anonymous";
+    if (!Platform.is.android && !Platform.is.mobile) {
+      warm.crossOrigin = "anonymous";
+    }
     warm.muted = true;
     warm.volume = 0;
   }

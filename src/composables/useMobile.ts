@@ -11,6 +11,16 @@ if (typeof window !== "undefined") {
   window.addEventListener("resize", onResize, { passive: true });
 }
 
+export function vibrateTick(durationMs = 15) {
+  try {
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate(durationMs);
+    }
+  } catch {
+    // Ignore vibration errors if not permitted
+  }
+}
+
 export function useMobile() {
   const isMobile = computed(() => {
     return width.value <= 768 || Boolean(Platform.is.mobile) || Boolean(Platform.is.android);
@@ -21,13 +31,7 @@ export function useMobile() {
   });
 
   const triggerHaptic = (durationMs = 15) => {
-    try {
-      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-        navigator.vibrate(durationMs);
-      }
-    } catch {
-      // Ignore vibration errors if not permitted
-    }
+    vibrateTick(durationMs);
   };
 
   return {

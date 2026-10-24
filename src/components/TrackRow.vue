@@ -68,10 +68,11 @@
           <q-tooltip>Отмечен как «Не нравится»</q-tooltip>
         </div>
 
-        <div class="icon-btn xs row-track-dots" @click.stop>
+        <div class="icon-btn xs row-track-dots" @click.stop="openOptions">
           <Icon name="mingcute:more-1-fill" :size="15" />
-          <q-tooltip>Действия с треком</q-tooltip>
+          <q-tooltip v-if="!isMobile">Действия с треком</q-tooltip>
           <TrackMenu
+            v-if="!isMobile"
             :track="track"
             :playlist-kind="playlistKind"
             @remove="emit('remove')"
@@ -126,20 +127,29 @@
     </div>
 
     <TrackMenu
+      v-if="!isMobile"
       :context-menu="true"
       :track="track"
       :playlist-kind="playlistKind"
       @remove="emit('remove')"
     />
+
+    <TrackBottomSheet
+      v-if="isMobile && showSheet"
+      v-model="showSheet"
+      :track="track"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import ArtistsLine from "@/components/ArtistsLine.vue";
 import AiTag from "@/components/AiTag.vue";
 import TrackMenu from "@/components/TrackMenu.vue";
+import TrackBottomSheet from "@/components/mobile/TrackBottomSheet.vue";
+import { useMobile, vibrateTick } from "@/composables/useMobile";
 import type { Track } from "@/api/types";
 import { formatDuration } from "@/lib/format";
 import { ensureAiArtists, isAiArtist } from "@/lib/aiTag";
@@ -173,6 +183,16 @@ const props = withDefaults(
   },
 );
 
+const { isMobile } = useMobile();
+const showSheet = ref(false);
+
+function openOptions() {
+  if (isMobile.value) {
+    vibrateTick(10);
+    showSheet.value = true;
+  }
+}
+
 const emit = defineEmits<{
   play: [];
   remove: [];
@@ -181,6 +201,10 @@ const emit = defineEmits<{
 }>();
 
 function onRowClick(event: MouseEvent) {
+  if (isMobile.value) {
+    emit("play");
+    return;
+  }
   if (!props.selectable) return;
   if (props.selected || event.ctrlKey || event.metaKey || event.shiftKey)
     emit("toggleSelect", event);

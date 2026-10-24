@@ -13,7 +13,9 @@
     "android:init": "tauri android init",
     "android:dev": "tauri android dev",
     "android:build": "node scripts/build-android.mjs",
-    "android:build:release": "node scripts/build-android.mjs --release"
+    "android:build:debug": "node scripts/build-android.mjs --debug",
+    "android:build:release": "node scripts/build-android.mjs --release",
+    "apk:server": "node scripts/serve-apk.cjs"
   },
   "dependencies": {
     "@iconify/vue": "^5.0.4",

@@ -85,6 +85,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { Notify } from "quasar";
 import { api } from "@/api/client";
 import type { Quality } from "@/api/types";
 import SettingSlider from "@/components/settings/SettingSlider.vue";

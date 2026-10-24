@@ -7,10 +7,10 @@ use tauri::UriSchemeResponder;
 
 pub const SCHEME: &str = "ymstream";
 
-const FIRST_CHUNK: usize = 256 * 1024;
-const CHUNK: usize = 1024 * 1024;
-const CHUNK_LIMIT: usize = 48;
-const WARM_BYTES: usize = 1536 * 1024;
+const CHUNK_LARGE: usize = 4 * 1024 * 1024; // 4 MB chunk span for streaming large files
+const CHUNK_LIMIT: usize = 32;
+const MAX_AUTO_CACHE_BYTES: usize = 20 * 1024 * 1024; // Auto-cache entire file if <= 20 MB (covers 100% of MP3/AAC tracks)
+const FULL_CACHE_LIMIT: usize = 8; // Store up to 8 complete tracks in RAM
 const META_TTL_SECS: u64 = 600;
 
 struct Chunk {
@@ -19,10 +19,21 @@ struct Chunk {
     body: Vec<u8>,
 }
 
+struct FullTrack {
+    url: String,
+    body: Vec<u8>,
+    mime: String,
+}
+
 struct Meta {
     total: usize,
     mime: String,
     at: Instant,
+}
+
+fn full_tracks() -> &'static Mutex<Vec<FullTrack>> {
+    static FULL_TRACKS: OnceLock<Mutex<Vec<FullTrack>>> = OnceLock::new();
+    FULL_TRACKS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
 fn chunks() -> &'static Mutex<Vec<Chunk>> {
@@ -46,10 +57,49 @@ fn http() -> Option<reqwest::Client> {
         .get_or_init(|| {
             reqwest::Client::builder()
                 .user_agent("Yandex-Music-API")
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .read_timeout(std::time::Duration::from_secs(30))
+                .tcp_keepalive(std::time::Duration::from_secs(30))
+                .pool_idle_timeout(std::time::Duration::from_secs(45))
                 .build()
                 .ok()
         })
         .clone()
+}
+
+fn cached_full(url: &str) -> Option<(Vec<u8>, String)> {
+    let mut store = full_tracks().lock().ok()?;
+    let at = store.iter().position(|item| item.url == url)?;
+    let item = store.remove(at);
+    let body = item.body.clone();
+    let mime = item.mime.clone();
+    store.push(item);
+    Some((body, mime))
+}
+
+fn is_full_cached(url: &str) -> bool {
+    if let Ok(store) = full_tracks().lock() {
+        store.iter().any(|item| item.url == url)
+    } else {
+        false
+    }
+}
+
+fn remember_full(url: &str, body: Vec<u8>, mime: &str) {
+    if body.is_empty() {
+        return;
+    }
+    if let Ok(mut store) = full_tracks().lock() {
+        store.retain(|item| item.url != url);
+        store.push(FullTrack {
+            url: url.to_string(),
+            body,
+            mime: mime.to_string(),
+        });
+        while store.len() > FULL_CACHE_LIMIT {
+            store.remove(0);
+        }
+    }
 }
 
 fn cached_chunk(url: &str, start: usize) -> Option<Vec<u8>> {
@@ -196,25 +246,21 @@ fn parse_range(value: &str, total: usize) -> Option<(usize, Option<usize>)> {
     Some((start, end))
 }
 
-fn chunk_span(start: usize) -> usize {
-    if start == 0 {
-        FIRST_CHUNK
-    } else {
-        CHUNK
-    }
-}
-
 async fn fetch_range(target: &str, start: usize, end: usize) -> Option<Vec<u8>> {
-    let response = http()?
-        .get(target)
-        .header("Range", format!("bytes={start}-{end}"))
-        .send()
-        .await
-        .ok()?;
-    if !response.status().is_success() {
-        return None;
+    for attempt in 0..2 {
+        let req = http()?.get(target).header("Range", format!("bytes={start}-{end}"));
+        if let Ok(resp) = req.send().await {
+            if resp.status().is_success() {
+                if let Ok(bytes) = resp.bytes().await {
+                    return Some(bytes.to_vec());
+                }
+            }
+        }
+        if attempt == 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
     }
-    Some(response.bytes().await.ok()?.to_vec())
+    None
 }
 
 async fn ensure_chunk(target: &str, start: usize, end: usize) -> Option<Vec<u8>> {
@@ -230,7 +276,8 @@ async fn meta(target: &str) -> Option<(usize, String)> {
     if let Some(found) = cached_meta(target) {
         return Some(found);
     }
-    let response = http()?
+    let client = http()?;
+    let response = client
         .get(target)
         .header("Range", "bytes=0-0")
         .send()
@@ -259,41 +306,31 @@ async fn meta(target: &str) -> Option<(usize, String)> {
     Some((total, mime))
 }
 
-async fn readahead(target: String, start: usize) {
-    let key = format!("{target}#{start}");
-    if cached_chunk(&target, start).is_some() {
-        return;
-    }
-    if let Ok(mut set) = inflight().lock() {
-        if !set.insert(key.clone()) {
-            return;
-        }
-    }
-    if let Some((total, _)) = meta(&target).await {
-        if start < total {
-            let end = (start + chunk_span(start)).min(total) - 1;
-            let _ = ensure_chunk(&target, start, end).await;
-        }
-    }
-    if let Ok(mut set) = inflight().lock() {
-        set.remove(&key);
-    }
-}
-
 async fn download_all(target: &str) -> Option<(Vec<u8>, String)> {
-    let response = http()?.get(target).send().await.ok()?;
-    if !response.status().is_success() {
-        return None;
+    for attempt in 0..2 {
+        let client = match http() {
+            Some(c) => c,
+            None => return None,
+        };
+        if let Ok(response) = client.get(target).send().await {
+            if response.status().is_success() {
+                let upstream = response
+                    .headers()
+                    .get("content-type")
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or("")
+                    .to_string();
+                if let Ok(bytes) = response.bytes().await {
+                    let mime = pick_mime(&upstream, target);
+                    return Some((bytes.to_vec(), mime));
+                }
+            }
+        }
+        if attempt == 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        }
     }
-    let upstream = response
-        .headers()
-        .get("content-type")
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("")
-        .to_string();
-    let body = response.bytes().await.ok()?.to_vec();
-    let mime = pick_mime(&upstream, target);
-    Some((body, mime))
+    None
 }
 
 fn whole(body: Vec<u8>, mime: String, range: Option<String>) -> Response<Vec<u8>> {
@@ -318,6 +355,9 @@ fn whole(body: Vec<u8>, mime: String, range: Option<String>) -> Response<Vec<u8>
 }
 
 pub fn clear() {
+    if let Ok(mut store) = full_tracks().lock() {
+        store.clear();
+    }
     if let Ok(mut store) = chunks().lock() {
         store.clear();
     }
@@ -333,26 +373,34 @@ pub async fn warm(target: String) {
     if !target.starts_with("https://") && !target.starts_with("http://") {
         return;
     }
-    let Some((total, _)) = meta(&target).await else {
+    if is_full_cached(&target) {
+        return;
+    }
+    let Some((total, mime)) = meta(&target).await else {
         return;
     };
     let started = Instant::now();
-    let mut start = 0usize;
-    let mut loaded = 0usize;
-    while start < total && loaded < WARM_BYTES {
-        let end = (start + chunk_span(start)).min(total) - 1;
-        if ensure_chunk(&target, start, end).await.is_none() {
-            break;
+    if total <= MAX_AUTO_CACHE_BYTES {
+        if let Some((body, _)) = download_all(&target).await {
+            remember_full(&target, body, &mime);
+            println!(
+                "[cache] прогрет трек целиком: {} КБ за {} мс",
+                total / 1024,
+                started.elapsed().as_millis()
+            );
+            return;
         }
-        loaded += end - start + 1;
-        start = end + 1;
     }
-    println!(
-        "[cache] прогрето {} КБ из {} КБ за {} мс",
-        loaded / 1024,
-        total / 1024,
-        started.elapsed().as_millis()
-    );
+    // Для очень больших файлов прогреваем первые 4 МБ
+    let end = CHUNK_LARGE.min(total) - 1;
+    if let Some(body) = ensure_chunk(&target, 0, end).await {
+        println!(
+            "[cache] прогреты первые {} КБ из {} КБ за {} мс",
+            body.len() / 1024,
+            total / 1024,
+            started.elapsed().as_millis()
+        );
+    }
 }
 
 async fn fetch(target: String, range: Option<String>) -> Response<Vec<u8>> {
@@ -360,22 +408,45 @@ async fn fetch(target: String, range: Option<String>) -> Response<Vec<u8>> {
         return empty(400);
     }
 
+    // 1. Проверяем, есть ли полный трек в оперативной памяти
+    if let Some((body, mime)) = cached_full(&target) {
+        return whole(body, mime, range);
+    }
+
+    // 2. Получаем мета-информацию (длина и MIME тип)
     let Some((total, mime)) = meta(&target).await else {
         return match download_all(&target).await {
-            Some((body, mime)) => whole(body, mime, range),
+            Some((body, mime)) => {
+                remember_full(&target, body.clone(), &mime);
+                whole(body, mime, range)
+            }
             None => empty(502),
         };
     };
 
-    let (start, limit) = match range.as_deref() {
-        Some(value) => match parse_range(value, total) {
-            Some(parsed) => parsed,
-            None => return unsatisfiable(total),
-        },
+    // 3. Если трек компактный (MP3/AAC до 20 МБ) и запрос идет с начала (bytes=0- или без Range):
+    // скачиваем его целиком в память. Это гарантирует отсутствие любых прерываний на 54 сек и моментальный сик!
+    let parsed_range = range.as_deref().and_then(|r| parse_range(r, total));
+    let is_start_request = match parsed_range {
+        None => true,
+        Some((0, _)) => true,
+        _ => false,
+    };
+
+    if total <= MAX_AUTO_CACHE_BYTES && is_start_request {
+        if let Some((body, downloaded_mime)) = download_all(&target).await {
+            remember_full(&target, body.clone(), &downloaded_mime);
+            return whole(body, downloaded_mime, range);
+        }
+    }
+
+    // 4. Для перемотки или крупных файлов: обрабатываем Range прозрачно
+    let (start, limit) = match parsed_range {
+        Some(parsed) => parsed,
         None => (0usize, None),
     };
 
-    let mut end = (start + chunk_span(start)).min(total) - 1;
+    let mut end = (start + CHUNK_LARGE).min(total) - 1;
     if let Some(explicit) = limit {
         end = end.min(explicit);
     }
@@ -391,11 +462,13 @@ async fn fetch(target: String, range: Option<String>) -> Response<Vec<u8>> {
     }
     let served_end = start + body.len() - 1;
 
-    if served_end + 1 < total {
-        let ahead = target.clone();
-        let next = served_end + 1;
+    // Фоновая предзагрузка полного трека, если он умещается в лимит
+    if total <= MAX_AUTO_CACHE_BYTES && !is_full_cached(&target) {
+        let bg_target = target.clone();
         tauri::async_runtime::spawn(async move {
-            readahead(ahead, next).await;
+            if let Some((body, m)) = download_all(&bg_target).await {
+                remember_full(&bg_target, body, &m);
+            }
         });
     }
 
@@ -415,7 +488,11 @@ async fn fetch(target: String, range: Option<String>) -> Response<Vec<u8>> {
 
 pub fn handle(request: Request<Vec<u8>>, responder: UriSchemeResponder) {
     let path = request.uri().path().trim_start_matches('/').to_string();
-    let target = percent_decode(&path);
+    let full_target = match request.uri().query() {
+        Some(query) if !query.is_empty() => format!("{path}?{query}"),
+        _ => path,
+    };
+    let target = percent_decode(&full_target);
     let range = request
         .headers()
         .get("range")

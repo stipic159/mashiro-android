@@ -5,17 +5,17 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep native media plugin and service
+-keep class app.mashiro.client.** { *; }
+-keepclassmembers class app.mashiro.client.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Keep Tauri Invoke arguments and plugins
+-keep @app.tauri.annotation.InvokeArg public class * { *; }
+-keepclassmembers @app.tauri.annotation.InvokeArg public class * { *; }
+-keep @app.tauri.annotation.TauriPlugin public class * { *; }
+-keepclassmembers @app.tauri.annotation.TauriPlugin public class * { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep Jackson and Media3
+-keep class com.fasterxml.jackson.** { *; }
+-keep class androidx.media3.** { *; }
+-keepclassmembers class androidx.media3.** { *; }

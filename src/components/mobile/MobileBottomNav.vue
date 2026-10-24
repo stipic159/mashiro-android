@@ -55,8 +55,8 @@ const tabs = [
   {
     to: "/playlists",
     label: "Коллекция",
-    icon: "mingcute:folder-music-line",
-    activeIcon: "mingcute:folder-music-fill",
+    icon: "mingcute:playlist-2-line",
+    activeIcon: "mingcute:playlist-2-fill",
   },
   {
     to: "/settings",

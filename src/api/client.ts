@@ -145,8 +145,15 @@ export const api = {
   findLocalTrack: (id: string, dir?: string | null) =>
     call<string | null>("find_local_track", { id, dir: dir || null }),
 
+  importLocalTrack: (id: string, name: string, bytes: number[] | Uint8Array, dir?: string | null) =>
+    call<string>("import_local_track", { id, name, bytes: Array.from(bytes), dir: dir || null }),
+
   removeLocalTrack: (id: string, dir?: string | null) =>
     call<boolean>("remove_local_track", { id, dir: dir || null }),
+
+  startSyncServer: () => call<string>("start_sync_server"),
+  stopSyncServer: () => call<void>("stop_sync_server"),
+  isSyncServerRunning: () => call<boolean>("is_sync_server_running"),
 
   downloadsInfo: (dir?: string | null) =>
     call<[number, number]>("downloads_info", { dir: dir || null }),

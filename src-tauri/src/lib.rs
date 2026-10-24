@@ -8,6 +8,7 @@ mod oauth;
 mod presence;
 mod proxy;
 mod state;
+mod sync_server;
 mod together;
 mod translate;
 mod tray;
@@ -15,6 +16,7 @@ mod yandex;
 
 use presence::DiscordState;
 use state::AppState;
+#[cfg(desktop)]
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -25,6 +27,18 @@ pub fn run() {
     #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
+    }
+
+    #[cfg(target_os = "android")]
+    {
+        builder = builder.plugin(
+            tauri::plugin::Builder::<tauri::Wry, ()>::new("media")
+                .setup(|_app, api| {
+                    api.register_android_plugin("app.mashiro.client", "MediaPlugin")?;
+                    Ok(())
+                })
+                .build(),
+        );
     }
 
     builder
@@ -108,7 +122,11 @@ pub fn run() {
             commands::default_download_dir,
             commands::find_local_track,
             commands::remove_local_track,
+            commands::import_local_track,
             commands::downloads_info,
+            sync_server::start_sync_server,
+            sync_server::stop_sync_server,
+            sync_server::is_sync_server_running,
             genius::genius_check,
             genius::genius_search,
             genius::genius_search_people,

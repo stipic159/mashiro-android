@@ -39,7 +39,7 @@
             class="settings-nav-item"
             :class="{ on: active === section.id, hits: section.hits.length }"
             type="button"
-            @click="select(section.id)"
+            @click="select(section.id, $event)"
           >
             <Icon :name="section.icon" :size="15" />
 
@@ -68,6 +68,12 @@
     <div ref="scrollRoot" class="settings-scroll">
       <div class="settings-content">
         <component :is="activeComponent" :key="active" />
+
+        <div class="settings-mobile-reset">
+          <button class="settings-reset-button danger" type="button" @click="reset">
+            Сбросить всё
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -76,7 +82,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { Notify } from "quasar";
+import { Notify, Platform } from "quasar";
 import { askConfirm } from "@/lib/dialogs";
 import AppearanceSection from "@/components/settings/sections/AppearanceSection.vue";
 import AboutSection from "@/components/settings/sections/AboutSection.vue";
@@ -230,12 +236,22 @@ const sections = [
   },
 ];
 
+const isMobileDevice = Platform.is.mobile || Platform.is.android;
+
+const visibleSections = computed(() => {
+  if (isMobileDevice) {
+    // Hide desktop-only features on mobile
+    return sections.filter((s) => !["mini", "discord", "hotkeys"].includes(s.id));
+  }
+  return sections;
+});
+
 const groups = computed(() => {
   const needle = query.value.trim().toLowerCase();
 
   return GROUPS.map((title) => ({
     title,
-    items: sections
+    items: visibleSections.value
       .filter((section) => section.group === title)
       .map((section) => ({
         ...section,
@@ -258,10 +274,10 @@ function sectionFromQuery(): string | null {
   const raw = route.query.section;
   const id = Array.isArray(raw) ? raw[0] : raw;
   if (typeof id !== "string") return null;
-  return sections.some((s) => s.id === id) ? id : null;
+  return visibleSections.value.some((s) => s.id === id) ? id : null;
 }
 
-const active = ref(sectionFromQuery() ?? sections[0]!.id);
+const active = ref(sectionFromQuery() ?? visibleSections.value[0]?.id ?? sections[0]!.id);
 
 watch(
   () => route.query.section,
@@ -272,7 +288,7 @@ watch(
 );
 
 const activeComponent = computed(
-  () => sections.find((s) => s.id === active.value)?.component ?? null,
+  () => visibleSections.value.find((s) => s.id === active.value)?.component ?? null,
 );
 
 function select(id: string) {

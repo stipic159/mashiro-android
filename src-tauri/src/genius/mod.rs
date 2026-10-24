@@ -11,6 +11,7 @@ mod types;
 
 use serde_json::Value;
 
+#[allow(unused_imports)]
 pub use types::{
     GeniusAlbum, GeniusArtist, GeniusAuthor, GeniusHit, GeniusMedia, GeniusPerson, GeniusPersonHit,
     GeniusQuote, GeniusRelation, GeniusSocial, GeniusSong,

@@ -404,7 +404,8 @@
     </template>
 
     <TogetherDock />
-    <FullscreenPlayer />
+    <MobileFullscreenPlayer v-if="isMobile" />
+    <FullscreenPlayer v-else />
     <TrackLyricsDialog />
     <AppDialog />
   </q-layout>
@@ -433,6 +434,7 @@ import WindowControls from "@/components/WindowControls.vue";
 import MobileHeader from "@/components/mobile/MobileHeader.vue";
 import MobileBottomNav from "@/components/mobile/MobileBottomNav.vue";
 import MobileMiniPlayer from "@/components/mobile/MobileMiniPlayer.vue";
+import MobileFullscreenPlayer from "@/components/mobile/MobileFullscreenPlayer.vue";
 import { useMobile } from "@/composables/useMobile";
 import { trackLyricsDialog } from "@/lib/dialogs";
 import {
@@ -650,6 +652,7 @@ const hotkeyHandlers = {
 };
 
 onMounted(() => {
+  player.bind();
   hotkeys.load();
   bindLocalHotkeys((signature) => hotkeys.resolve(signature), hotkeyHandlers);
   void bindGlobalHotkeyEvents(hotkeyHandlers);

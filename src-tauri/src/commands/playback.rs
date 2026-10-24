@@ -158,6 +158,42 @@ pub async fn download_image(app: AppHandle, url: String, name: String) -> Result
 }
 
 #[tauri::command]
+pub fn import_local_track(
+    app: AppHandle,
+    id: String,
+    name: String,
+    bytes: Vec<u8>,
+    dir: Option<String>,
+) -> Result<String, String> {
+    let target_dir = resolve_dir(&app, dir)?;
+    std::fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
+
+    let lower = name.to_lowercase();
+    let ext = if lower.ends_with(".flac") {
+        "flac"
+    } else if lower.ends_with(".m4a") || lower.ends_with(".aac") {
+        "m4a"
+    } else if lower.ends_with(".ogg") {
+        "ogg"
+    } else if lower.ends_with(".wav") {
+        "wav"
+    } else {
+        "mp3"
+    };
+
+    let clean_stem = if let Some(dot_idx) = name.rfind('.') {
+        &name[..dot_idx]
+    } else {
+        &name
+    };
+
+    let file = target_dir.join(format!("{} [{id}].{ext}", safe_name(clean_stem)));
+    std::fs::write(&file, &bytes).map_err(|e| e.to_string())?;
+
+    Ok(file.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 pub fn remove_local_track(
     app: AppHandle,
     id: String,

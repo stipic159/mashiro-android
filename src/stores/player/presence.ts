@@ -1,3 +1,4 @@
+import { Platform } from "quasar";
 import { api } from "@/api/client";
 import type { Track } from "@/api/types";
 import { DEFAULT_DISCORD_CLIENT_ID, useUiStore } from "@/stores/ui/index";
@@ -45,6 +46,9 @@ export async function syncDiscordPresence(
   context: PresenceContext,
   options: { force?: boolean } = {},
 ): Promise<string | null> {
+  if (Platform.is.android || Platform.is.mobile) {
+    return null;
+  }
   const settings = useUiStore().settings;
   const track = context.track;
   const clientId = settings.discordClientId.trim() || DEFAULT_DISCORD_CLIENT_ID;

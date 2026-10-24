@@ -49,60 +49,59 @@ abstract class BuildTask : DefaultTask() {
 
         val srcSo = File(rootDir, "target/$rustTarget/$profile/libmashiro_lib.so")
 
-        // First try standard tauri CLI invocation
-        var tauriSucceeded = false
-        val executable = "node"
-        val fallbacks = if (Os.isFamily(Os.FAMILY_WINDOWS)) {
-            listOf(executable, "$executable.exe", "$executable.cmd", "$executable.bat")
-        } else {
-            listOf(executable)
-        }
-
-        for (cmd in fallbacks) {
-            try {
-                runTauriCli(cmd)
-                tauriSucceeded = true
-                break
-            } catch (e: Exception) {
-                // If symlink failed or script requires dev server, fallback below
-            }
-        }
-
-        // If Tauri symlink succeeded and dst exists, we're done
-        if (tauriSucceeded && dstSo.exists()) {
-            return
-        }
-
-        // Fallback: If compiled .so exists, copy it directly (bypasses Windows symlink restriction)
+        // If target .so already exists (e.g. pre-compiled by build script or cargo), copy directly
         if (srcSo.exists()) {
             println("Copying $srcSo -> $dstSo (symlink bypass)")
             Files.copy(srcSo.toPath(), dstSo.toPath(), StandardCopyOption.REPLACE_EXISTING)
             return
         }
 
-        // If neither succeeded, throw informative error
+        // If already present in jniLibs, we're good
+        if (dstSo.exists()) {
+            return
+        }
+
+        // Otherwise try standard tauri CLI invocation via npx in workspace root
+        val workspaceDir = File(rootDir, "..")
+        val executable = if (Os.isFamily(Os.FAMILY_WINDOWS)) "npx.cmd" else "npx"
+        try {
+            runTauriCli(executable, workspaceDir)
+        } catch (e: Exception) {
+            // Check if .so was produced despite error
+        }
+
+        if (srcSo.exists()) {
+            println("Copying $srcSo -> $dstSo (symlink bypass)")
+            Files.copy(srcSo.toPath(), dstSo.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            return
+        }
+
+        if (dstSo.exists()) {
+            return
+        }
+
         throw GradleException("Could not build or locate Rust library at: ${srcSo.absolutePath}")
     }
 
-    fun runTauriCli(executable: String) {
-        val rootDirRel = rootDirRel ?: throw GradleException("rootDirRel cannot be null")
+    fun runTauriCli(executable: String, workDir: File) {
         val target = target ?: throw GradleException("target cannot be null")
         val release = release ?: throw GradleException("release cannot be null")
-        val args = listOf("tauri", "android", "android-studio-script")
+        val args = mutableListOf("tauri", "android", "android-studio-script")
+
+        if (logger.isEnabled(LogLevel.DEBUG)) {
+            args.add("-vv")
+        } else if (logger.isEnabled(LogLevel.INFO)) {
+            args.add("-v")
+        }
+        if (release) {
+            args.add("--release")
+        }
+        args.addAll(listOf("--target", target))
 
         execOperations.exec {
-            workingDir(File(projectDir, rootDirRel))
+            workingDir(workDir)
             executable(executable)
             args(args)
-            if (logger.isEnabled(LogLevel.DEBUG)) {
-                args("-vv")
-            } else if (logger.isEnabled(LogLevel.INFO)) {
-                args("-v")
-            }
-            if (release) {
-                args("--release")
-            }
-            args(listOf("--target", target))
         }.assertNormalExitValue()
     }
 }

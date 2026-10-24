@@ -2,8 +2,9 @@
   <div
     v-if="player.current"
     class="mobile-mini-player"
-    @click="openFullscreen"
+    @click="onMiniClick"
     @touchstart="onTouchStart"
+    @touchmove="onTouchMove"
     @touchend="onTouchEnd"
   >
     <!-- Top progress line -->
@@ -40,15 +41,15 @@
       </div>
 
       <!-- Action buttons -->
-      <div class="mini-actions" @click.stop>
+      <div class="mini-actions" @click.stop @touchstart.stop @touchmove.stop @touchend.stop>
         <button
           type="button"
           class="mini-btn"
-          :class="{ liked: player.isLiked(player.current.id) }"
+          :class="{ liked: library.liked(player.current.id) }"
           @click="toggleLike"
         >
           <Icon
-            :name="player.isLiked(player.current.id) ? 'mingcute:heart-fill' : 'mingcute:heart-line'"
+            :name="library.liked(player.current.id) ? 'mingcute:heart-fill' : 'mingcute:heart-line'"
             :size="20"
           />
         </button>
@@ -79,6 +80,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { usePlayerStore } from "@/stores/player";
+import { useLibraryStore } from "@/stores/library";
 import { useMobile } from "@/composables/useMobile";
 import { isAiArtist } from "@/lib/aiTag";
 import { isCensored as checkCensored } from "@/lib/censor";
@@ -86,6 +88,7 @@ import AiTag from "@/components/AiTag.vue";
 import ArtistsLine from "@/components/ArtistsLine.vue";
 
 const player = usePlayerStore();
+const library = useLibraryStore();
 const { triggerHaptic } = useMobile();
 
 const progressPercent = computed(() => {
@@ -120,10 +123,11 @@ function nextTrack() {
 function toggleLike() {
   if (!player.current) return;
   triggerHaptic(15);
-  void player.toggleLike(player.current.id);
+  void library.toggleLike(player.current);
 }
 
 // Swipe gestures
+let hasSwiped = false;
 let touchStartX = 0;
 let touchStartY = 0;
 
@@ -132,6 +136,17 @@ function onTouchStart(e: TouchEvent) {
   if (!touch) return;
   touchStartX = touch.clientX;
   touchStartY = touch.clientY;
+  hasSwiped = false;
+}
+
+function onTouchMove(e: TouchEvent) {
+  const touch = e.touches[0];
+  if (!touch) return;
+  const deltaX = touch.clientX - touchStartX;
+  const deltaY = touch.clientY - touchStartY;
+  if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+    hasSwiped = true;
+  }
 }
 
 function onTouchEnd(e: TouchEvent) {
@@ -141,13 +156,15 @@ function onTouchEnd(e: TouchEvent) {
   const deltaY = touch.clientY - touchStartY;
 
   // Swipe up opens fullscreen
-  if (deltaY < -50 && Math.abs(deltaY) > Math.abs(deltaX)) {
+  if (deltaY < -40 && Math.abs(deltaY) > Math.abs(deltaX)) {
+    hasSwiped = true;
     openFullscreen();
     return;
   }
 
   // Horizontal swipes: skip track
-  if (Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY)) {
+  if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY)) {
+    hasSwiped = true;
     if (deltaX < 0) {
       nextTrack();
     } else {
@@ -156,12 +173,20 @@ function onTouchEnd(e: TouchEvent) {
     }
   }
 }
+
+function onMiniClick() {
+  if (hasSwiped) {
+    hasSwiped = false;
+    return;
+  }
+  openFullscreen();
+}
 </script>
 
 <style scoped>
 .mobile-mini-player {
   position: fixed;
-  bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 6px);
   left: 8px;
   right: 8px;
   height: 56px;
@@ -171,7 +196,7 @@ function onTouchEnd(e: TouchEvent) {
   border-radius: 12px;
   border: 1px solid var(--line, rgba(255, 255, 255, 0.1));
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  z-index: 999;
+  z-index: 1001;
   display: flex;
   flex-direction: column;
   overflow: hidden;

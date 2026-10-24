@@ -1,3 +1,11 @@
+export function formatTime(sec: number | null | undefined): string {
+  if (!sec || sec < 0) return "0:00";
+  const totalSeconds = Math.floor(sec);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
 export function formatDuration(ms: number | null | undefined): string {
   if (!ms || ms < 0) return "0:00";
   const totalSeconds = Math.floor(ms / 1000);
@@ -6,7 +14,8 @@ export function formatDuration(ms: number | null | undefined): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-export function artistNames(artists: { name: string }[]): string {
+export function artistNames(artists: { name: string }[] | null | undefined): string {
+  if (!artists || !artists.length) return "";
   return artists.map((a) => a.name).join(", ");
 }
 
