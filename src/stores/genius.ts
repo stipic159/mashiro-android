@@ -72,7 +72,7 @@ export const useGeniusStore = defineStore("genius", {
     writers(state): GeniusSong["credits"] {
       return (state.song?.credits || []).filter((p) => p.role === "Автор");
     },
-    people(state): GeniusSong["credits"] {
+    songPeople(state): GeniusSong["credits"] {
       const seen = new Set<string>();
       const out: GeniusSong["credits"] = [];
       for (const person of state.song?.credits || []) {

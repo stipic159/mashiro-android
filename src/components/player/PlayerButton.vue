@@ -88,10 +88,6 @@
     <q-tooltip>Очередь треков</q-tooltip>
   </div>
 
-  <div v-else-if="id === 'mini'" class="icon-btn" @click="panels.enterMini()">
-    <Icon name="mingcute:miniplayer-fill" :size="18" />
-    <q-tooltip>Мини-плеер поверх окон</q-tooltip>
-  </div>
 
   <div
     v-else-if="id === 'sleep'"

@@ -15,102 +15,23 @@
     <div class="lyrics-shade" />
     <canvas v-if="ambientOn" ref="vizCanvas" class="lyrics-visualizer" />
 
-    <div class="lyrics-toolbar" @mousedown="onHeadDrag">
-      <div class="lyrics-track">
-        <div class="cover lyrics-mini-cover">
-          <img
-            v-if="coverUrl"
-            loading="lazy"
-            decoding="async"
-            :src="coverUrl"
-          />
-          <Icon v-else name="mingcute:music-line" :size="16" class="faint" />
-        </div>
-        <div style="min-width: 0">
-          <div
-            class="t-13 w-600 ellipsis lyrics-link"
-            data-no-drag
-            @click="openAlbum"
-          >
-            {{ player.current?.title || "Текст песни" }}
-          </div>
-          <div
-            class="lyrics-subtitle ellipsis lyrics-link"
-            data-no-drag
-            @click="openArtist"
-          >
-            {{ artistLabel }}
-          </div>
-        </div>
-      </div>
-
-      <div class="lyrics-src">
-        <button
-          v-for="opt in sources"
-          :key="opt.id"
-          type="button"
-          class="lyrics-src-btn"
-          :class="{ on: pick === opt.id }"
-          :disabled="!player.current"
-          @click="choose(opt.id)"
-        >
-          {{ opt.label }}
-        </button>
-      </div>
-
-      <div class="lyrics-tools">
-        <div
-          class="icon-btn round"
-          data-no-drag
-          @click="player.loadLyrics(true)"
-        >
-          <Icon name="mingcute:repeat-line" :size="16" />
-          <q-tooltip>Загрузить текст заново</q-tooltip>
-        </div>
-        <div v-if="player.current" class="icon-btn round" data-no-drag>
-          <Icon name="mingcute:more-2-fill" :size="18" />
-          <TrackMenu :track="player.current" />
-        </div>
-        <div
-          class="icon-btn round"
-          :class="{ on: showSettings }"
-          data-no-drag
-          @click="showSettings = !showSettings"
-        >
-          <Icon name="mingcute:settings-5-line" :size="17" />
-          <q-tooltip>Вид текста</q-tooltip>
-        </div>
-        <div
-          class="icon-btn round"
-          :class="{ on: player.lyricsFullscreen }"
-          data-no-drag
-          @click="player.toggleLyricsFullscreen()"
-        >
-          <Icon
-            :name="player.lyricsFullscreen ? 'mingcute:restore-line' : 'mingcute:square-line'"
-            :size="15"
-          />
-          <q-tooltip>
-            {{
-              player.lyricsFullscreen
-                ? "Выйти из полного экрана"
-                : "На полный экран"
-            }}
-          </q-tooltip>
-        </div>
-        <div
-          class="icon-btn round"
-          data-no-drag
-          @click="player.openFullscreen()"
-        >
-          <Icon name="mingcute:album-line" :size="17" />
-          <q-tooltip>Большая обложка</q-tooltip>
-        </div>
-        <div class="icon-btn round" data-no-drag @click="player.toggleLyrics()">
-          <Icon name="mingcute:close-line" :size="18" />
-        </div>
-      </div>
-    </div>
+    <LyricsToolbar
+      :current-track="player.current"
+      :cover-url="coverUrl"
+      :artist-label="artistLabel"
+      :sources="sources"
+      :pick="pick"
+      :show-settings="showSettings"
+      :lyrics-fullscreen="player.lyricsFullscreen"
+      @open-album="openAlbum"
+      @open-artist="openArtist"
+      @choose-source="choose"
+      @reload-lyrics="player.loadLyrics(true)"
+      @toggle-settings="showSettings = !showSettings"
+      @toggle-fullscreen="player.toggleLyricsFullscreen()"
+      @open-artwork-fullscreen="player.openFullscreen()"
+      @close-lyrics="player.toggleLyrics()"
+    />
 
     <LyricsSettingsPanel v-if="showSettings" />
 
@@ -388,49 +309,13 @@
       </div>
     </template>
 
-    <button
-      v-if="hint"
-      ref="hintEl"
-      type="button"
-      class="lyric-hint"
-      :style="{ left: `${hint.x}px`, top: `${hint.y}px` }"
-      @click.stop="openHint"
-    >
-      <Icon name="mingcute:information-line" :size="14" />
-      <span>Разбор строки</span>
-    </button>
-
-    <q-dialog v-model="annotationOpen">
-      <div class="ann-card">
-        <div class="ann-head">
-          <div class="ann-title ellipsis">{{ player.current?.title }}</div>
-          <div class="icon-btn round" @click="annotationOpen = false">
-            <Icon name="mingcute:close-line" :size="16" />
-          </div>
-        </div>
-        <div v-if="activeAnnotation" class="ann-frag">
-          {{ activeAnnotation.fragment }}
-        </div>
-        <p v-if="activeAnnotation" class="ann-text">
-          {{ activeAnnotation.text }}
-        </p>
-        <div class="ann-foot">
-          <span class="ann-by ellipsis">
-            {{
-              activeAnnotation?.authors?.length
-                ? activeAnnotation.authors.map((a) => a.name).join(", ")
-                : "Genius"
-            }}
-          </span>
-          <a
-            v-if="activeAnnotation?.url"
-            class="ann-link"
-            @click.prevent="openUrl(activeAnnotation.url)"
-            >Источник</a
-          >
-        </div>
-      </div>
-    </q-dialog>
+    <LyricsAnnotationModal
+      :active-annotation="activeAnnotation"
+      :hint="hint"
+      :track-title="player.current?.title || ''"
+      @update:active-annotation="activeAnnotation = $event"
+      @open-hint="openHint"
+    />
 
     <TrackMenu
       v-if="player.current"
@@ -445,22 +330,20 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import type { QScrollArea } from "quasar";
 import { useRoute, useRouter } from "vue-router";
 import LyricsSettingsPanel from "@/components/lyrics/LyricsSettingsPanel.vue";
+import LyricsToolbar, { type SourcePick } from "@/components/lyrics/LyricsToolbar.vue";
+import LyricsAnnotationModal from "@/components/lyrics/LyricsAnnotationModal.vue";
 import TrackMenu from "@/components/TrackMenu.vue";
-import { api } from "@/api/client";
 import type { GeniusQuote } from "@/api/types";
 import { audio } from "@/lib/audio";
 import { useVisualizer } from "@/composables/useVisualizer";
 import { artistNames } from "@/lib/format";
 import { ORIGIN_LABEL } from "@/lib/lyricsSource";
-import { startWindowDrag } from "@/lib/window";
 import { useGeniusStore } from "@/stores/genius";
 import { useLibraryStore } from "@/stores/library";
 import { usePlayerStore } from "@/stores/player/index";
 import { useUiStore } from "@/stores/ui/index";
 
 type Credit = { id: number; name: string; role: string; image: string };
-
-type SourcePick = "auto" | "lrclib" | "genius";
 
 const player = usePlayerStore();
 const router = useRouter();
@@ -519,15 +402,12 @@ onBeforeUnmount(() => {
 
 const lines = computed(() => player.lyrics?.lines || []);
 const synced = computed(() => Boolean(player.lyrics?.synced));
-// const coverUrl = computed(
-//   () => player.current?.cover_url_large || player.current?.cover_url || "",
-// );
 
 const coverUrl = computed(() => {
   const track = player.current;
   const url = track?.cover_url_large || track?.cover_url || "";
   return url.replace(/\/\d+x\d+(?=$|\?)/, "/1000x1000");
-}); // костыль, но работает
+});
 const artistLabel = computed(() =>
   player.current ? artistNames(player.current.artists) : "",
 );
@@ -551,7 +431,7 @@ function toggleLike() {
 const credits = computed<Credit[]>(() => {
   const current = player.current;
   if (!current || genius.songKey !== String(current.id)) return [];
-  return (genius.people as Credit[])
+  return (genius.songPeople as Credit[])
     .filter((person) => person.id > 0)
     .slice(0, 8);
 });
@@ -587,7 +467,6 @@ function annotationFor(text: string): GeniusQuote | null {
     if (!frag) continue;
     if (frag.includes(line) || line.includes(frag)) return quote;
 
-    // Фрагмент с Genius часто из нескольких строк, а в LRCLIB они разделены.
     const parts = (quote.fragment || "")
       .split(/\r?\n/)
       .map(normText)
@@ -605,19 +484,12 @@ const lineAnnotations = computed<Array<GeniusQuote | null>>(() => {
 });
 
 const activeAnnotation = ref<GeniusQuote | null>(null);
-const annotationOpen = computed({
-  get: () => !!activeAnnotation.value,
-  set: (value: boolean) => {
-    if (!value) activeAnnotation.value = null;
-  },
-});
 
 function openAnnotation(quote: GeniusQuote | null) {
   if (quote) activeAnnotation.value = quote;
   hint.value = null;
 }
 
-const hintEl = ref<HTMLElement | null>(null);
 const hint = ref<{ x: number; y: number; quote: GeniusQuote } | null>(null);
 
 function onLineMenu(event: MouseEvent, index: number) {
@@ -637,56 +509,9 @@ function openHint() {
   openAnnotation(hint.value?.quote ?? null);
 }
 
-function closeHint(event?: Event) {
-  if (!hint.value) return;
-  const el = hintEl.value;
-  if (event && el && event.composedPath().includes(el)) return;
-  hint.value = null;
-}
-
-function onHintKey(event: KeyboardEvent) {
-  if (event.key === "Escape") hint.value = null;
-}
-
-window.addEventListener("pointerdown", closeHint);
-window.addEventListener("wheel", closeHint, { passive: true });
-window.addEventListener("keydown", onHintKey);
-
-onBeforeUnmount(() => {
-  window.removeEventListener("pointerdown", closeHint);
-  window.removeEventListener("wheel", closeHint);
-  window.removeEventListener("keydown", onHintKey);
-});
-
-watch(
-  () => player.current?.id,
-  () => {
-    hint.value = null;
-    activeAnnotation.value = null;
-  },
+const pick = computed<SourcePick>(
+  () => (player.lyricsPick as SourcePick) || "auto",
 );
-
-function openUrl(url: string) {
-  if (url) void api.openExternal(url);
-}
-
-watch(
-  () => [player.showLyrics, player.current?.id] as const,
-  ([shown, id]) => {
-    if (shown && id && genius.ready) void genius.fetchSong(player.current);
-  },
-  { immediate: true },
-);
-
-function isPart(text: string): boolean {
-  const value = (text || "").trim();
-  return value.length > 2 && value.startsWith("[") && value.endsWith("]");
-}
-
-function partLabel(text: string): string {
-  const value = (text || "").trim();
-  return isPart(value) ? value.slice(1, -1).trim() : text;
-}
 
 const sources: Array<{ id: SourcePick; label: string }> = [
   { id: "auto", label: "Авто" },
@@ -694,114 +519,104 @@ const sources: Array<{ id: SourcePick; label: string }> = [
   { id: "genius", label: "Genius" },
 ];
 
-const pick = computed<SourcePick>(
-  () => (player.lyricsPick as SourcePick | null) ?? "auto",
-);
-
 const searchingIn = computed(() => {
   if (pick.value === "lrclib") return "LRCLIB";
   if (pick.value === "genius") return "Genius";
-  return "LRCLIB и Genius";
+  return "Яндекс Музыке, LRCLIB и Genius";
 });
 
 const originTag = computed(() => {
-  const origin = player.lyricsOrigin;
-  if (!origin || !lines.value.length) return "";
-  return ORIGIN_LABEL[origin];
+  const orig = player.lyricsOrigin;
+  return orig ? ORIGIN_LABEL[orig] : "";
+});
+
+const footVisible = computed(() => {
+  if (!ui.settings.lyricsShowCredits) return false;
+  return Boolean(originTag.value || credits.value.length || writers.value);
 });
 
 const creditsVisible = computed(
-  () =>
-    ui.settings.lyricsShowCredits &&
-    (credits.value.length > 0 || Boolean(writers.value)),
+  () => credits.value.length > 0 || Boolean(writers.value),
 );
-
-const footVisible = computed(
-  () =>
-    creditsVisible.value ||
-    (ui.settings.lyricsShowOrigin && Boolean(originTag.value)),
-);
-
-async function choose(id: SourcePick, force = false) {
-  await player.setLyricsSource(id === "auto" ? null : id, force);
-}
-
-const visualStyle = computed(() => ({
-  "--lyrics-size": `${s.value.fontSize}px`,
-  "--lyrics-line-height": `${s.value.lineHeight}`,
-  "--lyrics-weight": `${s.value.weight}`,
-  "--lyrics-inactive": `${s.value.inactive / 100}`,
-  "--lyrics-bg-blur": `${s.value.backgroundBlur}px`,
-  "--lyrics-bg-opacity": `${s.value.backgroundOpacity / 100}`,
-  "--lyrics-line-blur": `${s.value.lineBlur}px`,
-}));
-
-const vizCanvas = ref<HTMLCanvasElement | null>(null);
-const ambientOn = computed(
-  () =>
-    player.showLyrics &&
-    player.lyricsFullscreen &&
-    ui.settings.lyricsVisualizer,
-);
-useVisualizer(vizCanvas, () => ambientOn.value, { bars: 64 });
 
 const translateReplace = computed(
-  () => ui.settings.lyricsTranslateMode === "replace",
+  () =>
+    ui.settings.lyricsTranslate &&
+    ui.settings.lyricsTranslateMode === "replace",
 );
 
 function lineTranslation(i: number): string {
   if (!ui.settings.lyricsTranslate) return "";
-  const tr = player.lyricsTranslation?.[i];
-  if (!tr) return "";
-  const trimmed = tr.trim();
-  if (!trimmed) return "";
-  const orig = (lines.value[i]?.text || "").trim();
-  if (trimmed.toLowerCase() === orig.toLowerCase()) return "";
-  return trimmed;
+  const t = player.lyricsTranslation;
+  return t && t[i] ? t[i].trim() : "";
 }
 
-// Перевод должен применяться сразу после переключения настройки,
-// а не только при запуске следующего трека.
-watch(
-  () => [
-    ui.settings.lyricsTranslate,
-    ui.settings.lyricsTranslateTarget,
-    player.lyrics?.track_id ?? null,
-  ],
-  () => {
-    if (ui.settings.lyricsTranslate) void player.loadTranslation(true);
-  },
-  { immediate: true },
+function isPart(text: string): boolean {
+  const t = (text || "").trim();
+  return (
+    (t.startsWith("[") && t.endsWith("]")) ||
+    (t.startsWith("(") && t.endsWith(")"))
+  );
+}
+
+function partLabel(text: string): string {
+  const t = (text || "").trim();
+  if (isPart(t)) return t.slice(1, -1);
+  return t;
+}
+
+function choose(p: SourcePick, force = false) {
+  void player.setLyricsSource(p, force);
+}
+
+const ambientOn = computed(
+  () => ui.settings.lyricsVisualizer && player.isPlaying,
 );
+
+const vizCanvas = ref<HTMLCanvasElement | null>(null);
+useVisualizer(vizCanvas, () => ambientOn.value, { bars: 48 });
+
+const visualStyle = computed(() => {
+  const st = s.value;
+  return {
+    "--lyrics-fs": `${st.fontSize}px`,
+    "--lyrics-lh": String(st.lineHeight),
+    "--lyrics-fw": String(st.weight),
+    "--lyrics-blur": `${st.backgroundBlur}px`,
+    "--lyrics-opacity": `${st.backgroundOpacity / 100}`,
+    "--lyrics-line-blur": `${st.lineBlur}px`,
+    "--lyrics-inactive": `${st.inactive / 100}`,
+  };
+});
 
 const fill = ref(0);
-const fillStyle = computed(() => ({ "--lp": `${fill.value}%` }));
-const karaoke = computed(
-  () => s.value.highlight === "karaoke" && synced.value && player.showLyrics,
-);
+const dotsFill = ref(0);
+
+const fillStyle = computed(() => {
+  const p = fill.value;
+  return {
+    "--fill": `${p}%`,
+    "--fill-ratio": (p / 100).toFixed(3),
+  };
+});
 
 const wordKaraoke = computed(
-  () => karaoke.value && ui.settings.lyricsKaraokeWord,
+  () => s.value.highlight === "karaoke" && ui.settings.lyricsKaraokeWord,
 );
 
-// Три точки в инструментальных паузах и во вступлении, как в Apple Music:
-// показываем только в паузах от DOTS_MIN_GAP, сначала небольшая задержка
-// (точки плавно появляются), затем заливка по очереди, а в конце точки
-// «схлопываются» прямо перед следующей строкой.
-const DOTS_MIN_GAP = 4000; // минимальная длина паузы, мс
-const DOTS_LEAD = 700; // задержка до начала заливки, мс
-const DOTS_TAIL = 450; // время на анимацию ухода в конце паузы, мс
+const DOTS_MIN_GAP = 5500;
+const DOTS_LEAD = 400;
+const DOTS_TAIL = 400;
 
-const dotsFill = ref(0);
-const dotsOut = computed(() => dotsFill.value >= 100);
+const dotsOut = computed(() => dotsFill.value >= 98);
 
 function gapProgress(elapsed: number, total: number): number {
+  if (elapsed < DOTS_LEAD) return 0;
   const usable = total - DOTS_LEAD - DOTS_TAIL;
   if (usable <= 0) return 0;
   return Math.min(100, Math.max(0, ((elapsed - DOTS_LEAD) / usable) * 100));
 }
 
-// Уровень заливки точки n (0..2) в диапазоне 0..1.
 function dotLevel(n: number): number {
   return Math.min(1, Math.max(0, (dotsFill.value / 100) * 3 - n));
 }
@@ -825,14 +640,12 @@ const introDots = computed(
     (lines.value[0]?.time_ms ?? 0) >= DOTS_MIN_GAP,
 );
 
-// Слова активной строки вместе с хвостовыми пробелами.
 const activeWords = computed<string[]>(() => {
   if (!wordKaraoke.value) return [];
   const line = lines.value[player.activeLine];
   return (line?.text || "").match(/\S+\s*/gu) ?? [];
 });
 
-// Границы заливки каждого слова (доля 0..1), вес — длина слова.
 const wordBounds = computed<Array<[number, number]>>(() => {
   const words = activeWords.value;
   const total = words.reduce((sum, w) => sum + w.length, 0) || 1;
@@ -875,7 +688,6 @@ function tick() {
     dotsFill.value = line.text ? 0 : gapProgress(now - start, end - start);
   } else {
     fill.value = 0;
-    // Вступление до первой строки.
     const first = list[0]?.time_ms ?? 0;
     dotsFill.value = first > 0 ? gapProgress(now, first) : 0;
   }
@@ -900,13 +712,6 @@ watch(
 );
 
 onBeforeUnmount(stopTick);
-
-// В полноэкранном режиме шапка работает как заголовок окна:
-// за неё можно тащить всё окно.
-function onHeadDrag(event: MouseEvent) {
-  if (!player.lyricsFullscreen) return;
-  void startWindowDrag(event);
-}
 
 function openAlbum() {
   const id = player.current?.album_id;

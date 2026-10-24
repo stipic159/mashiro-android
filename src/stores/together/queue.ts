@@ -22,7 +22,7 @@ export function trimQueue(queue: Track[], index: number): QueueSlice {
 
 /** Сжимаем окно очереди, пока пакет не влезет в лимит сервера. */
 export function fitBudget(
-  base: Record<string, unknown>,
+  base: object,
   slice: QueueSlice,
   budget: number,
 ): QueueSlice {

@@ -3,7 +3,7 @@
     v-if="together.active && ui.settings.togetherShowDock"
     ref="root"
     class="together-dock"
-    :class="{ open, dragging, mini: panels.mini }"
+    :class="{ open, dragging }"
     :style="style"
   >
     <div

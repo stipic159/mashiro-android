@@ -39,7 +39,7 @@
             class="settings-nav-item"
             :class="{ on: active === section.id, hits: section.hits.length }"
             type="button"
-            @click="select(section.id, $event)"
+            @click="select(section.id)"
           >
             <Icon :name="section.icon" :size="15" />
 

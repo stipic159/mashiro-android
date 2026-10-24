@@ -233,7 +233,7 @@ export function frequencyData(): Uint8Array | null {
   if (!freqBuffer || freqBuffer.length !== analyser.frequencyBinCount) {
     freqBuffer = new Uint8Array(analyser.frequencyBinCount);
   }
-  analyser.getByteFrequencyData(freqBuffer);
+  analyser.getByteFrequencyData(freqBuffer as any);
   return freqBuffer;
 }
 
@@ -242,7 +242,7 @@ export function currentLevel(): number {
     if (!ensureAnalyser()) return 1;
   }
   if (!analyser || !levelBuffer) return 1;
-  analyser.getFloatTimeDomainData(levelBuffer);
+  analyser.getFloatTimeDomainData(levelBuffer as any);
   let sum = 0;
   for (let i = 0; i < levelBuffer.length; i++) {
     const v = levelBuffer[i] ?? 0;

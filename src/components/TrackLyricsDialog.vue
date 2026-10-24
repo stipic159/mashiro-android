@@ -78,6 +78,7 @@ import { readCache, writeCache } from "@/lib/cache";
 import { trackLyricsDialog } from "@/lib/dialogs";
 import { artistNames } from "@/lib/format";
 import { useGeniusStore } from "@/stores/genius";
+import { useUiStore } from "@/stores/ui/index";
 
 const loading = ref(false);
 const error = ref("");
@@ -85,6 +86,7 @@ const lyrics = ref<Lyrics | null>(null);
 const source = ref<"yandex" | "genius">("yandex");
 
 const genius = useGeniusStore();
+const ui = useUiStore();
 
 const open = computed({
   get: () => trackLyricsDialog.open,
@@ -147,7 +149,7 @@ async function load(id: string, force = false) {
       loading.value = false;
       if (
         genius.ready &&
-        genius.lyricsMode !== "off" &&
+        ui.settings.lyricsSource !== "yandex" &&
         !toBlocks(lyrics.value).length
       ) {
         source.value = "genius";
@@ -166,7 +168,7 @@ watch(
   ([isOpen, id]) => {
     if (!isOpen || !id) return;
     source.value =
-      genius.ready && genius.lyricsMode === "always" ? "genius" : "yandex";
+      genius.ready && ui.settings.lyricsSource === "genius" ? "genius" : "yandex";
     void load(String(id));
   },
   { immediate: true },

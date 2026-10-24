@@ -2,24 +2,15 @@ import { watch } from "vue";
 import { defineStore } from "pinia";
 import { Notify } from "quasar";
 import { api } from "@/api/client";
-import type { Lyrics, Quality, RepeatMode, Track } from "@/api/types";
+import type { Quality, RepeatMode, Track } from "@/api/types";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
-  audio,
-  cancelFade,
   clearWarm,
-  currentLevel,
-  ensureAnalyser,
-  fadeIn,
-  fadeOut,
   isCurrentToken,
   nextSourceToken,
-  resumeAudioContext,
   resetNormalization,
   setNormalization,
-  safePlay,
   warmNext,
-  resumeOnGesture,
 } from "@/lib/audio";
 import {
   bindMediaSession,
@@ -29,9 +20,7 @@ import {
   updatePlaybackState,
   updatePositionState,
 } from "@/lib/mediaSession";
-import { readCache, releaseMemoryCache, writeCache } from "@/lib/cache";
-import type { LyricsOrigin } from "@/lib/lyricsSource";
-import { hasText, loadTrackLyrics } from "@/lib/lyricsSource";
+import { releaseMemoryCache } from "@/lib/cache";
 import { proxyStream } from "@/lib/stream";
 import {
   censorUrl,
@@ -41,35 +30,33 @@ import {
 } from "@/lib/censor";
 import { overrideUrl } from "@/lib/censorOverrides";
 import { createLogger, logQuality } from "@/lib/log";
-import { useEqualizerStore } from "@/stores/equalizer";
 import { useLibraryStore } from "@/stores/library";
 import { useSleepStore } from "@/stores/sleep";
 import { useStatsStore } from "@/stores/stats";
 import { useTogetherStore } from "@/stores/together/index";
 import type { LyricsSource } from "@/stores/ui/defaults";
 import { useUiStore } from "@/stores/ui/index";
-import { artistNames } from "@/lib/format";
-import {
-  initNativeAudio,
-  isNativeAudio,
-  nativePause,
-  nativePlay,
-  nativeResume,
-  nativeSeek,
-  nativeSetFullscreen,
-  nativeSetPlaybackRate,
-  nativeSetRepeat,
-  nativeSetVolume,
-} from "@/lib/nativeAudio";
+import { getAudioDriver } from "@/stores/audio";
 import { loadSession, saveSession } from "./session";
 import type { PlaybackSettings } from "./settings";
 import { loadPlaybackSettings, savePlaybackSettings } from "./settings";
-
-const DEFAULT_STATION = "user:onyourwave";
-const SEEN_LIMIT = 600;
-const WAVE_HISTORY_KEY = "wave.history.v1";
-const WAVE_HISTORY_LIMIT = 500;
-const PREFETCH_LIMIT = 4;
+import type { PlayerState } from "./state";
+import { createInitialPlayerState } from "./state";
+import {
+  dedupeQueue as dedupeQueueHelper,
+  dedupeTracks,
+  removeFromQueue as removeFromQueueHelper,
+  shuffleQueue,
+  unshuffleQueue,
+} from "./queue";
+import {
+  DEFAULT_STATION,
+  fetchInitialWaveTracks,
+  fetchMoreWaveTracks,
+  rememberSeenTracks,
+  rescueWaveTracks,
+} from "./wave";
+import { fetchLyricsTranslation, fetchTrackLyrics } from "./lyrics";
 
 const log = createLogger("player");
 
@@ -84,17 +71,7 @@ interface PrefetchEntry {
 }
 
 const prefetched = new Map<string, PrefetchEntry>();
-
-function dedupeTracks(tracks: Track[], known?: Set<string>): Track[] {
-  const seen = known ?? new Set<string>();
-  const out: Track[] = [];
-  for (const track of tracks) {
-    if (!track?.id || seen.has(track.id)) continue;
-    seen.add(track.id);
-    out.push(track);
-  }
-  return out;
-}
+const PREFETCH_LIMIT = 4;
 
 function rememberPrefetch(id: string, entry: PrefetchEntry): void {
   prefetched.delete(id);
@@ -106,49 +83,6 @@ function rememberPrefetch(id: string, entry: PrefetchEntry): void {
   }
 }
 
-interface PlayerState {
-  queue: Track[];
-  sourceQueue: Track[];
-  index: number;
-  current: Track | null;
-  isPlaying: boolean;
-  progress: number;
-  duration: number;
-  volume: number;
-  muted: boolean;
-  quality: Quality;
-  playbackRate: number;
-  repeat: RepeatMode;
-  shuffle: boolean;
-  currentCodec: string | null;
-  currentBitrate: number | null;
-  currentSource: string | null;
-  playingLocal: boolean;
-  censorReplaced: boolean;
-  censorAvailable: boolean;
-  loading: boolean;
-  waveBatchId: string | null;
-  waveSessionId: string | null;
-  isWave: boolean;
-  stationId: string | null;
-  stationName: string | null;
-  fetchingMore: boolean;
-  seenIds: string[];
-  lyrics: Lyrics | null;
-  lyricsLoading: boolean;
-  lyricsError: string | null;
-  lyricsOrigin: LyricsOrigin | null;
-  lyricsPick: LyricsSource | null;
-  lyricsTranslation: string[] | null;
-  lyricsTranslateKey: string | null;
-  lyricsTranslateLoading: boolean;
-  showLyrics: boolean;
-  lyricsFullscreen: boolean;
-  fullscreen: boolean;
-  waveError: string | null;
-  pendingResume: boolean;
-}
-
 let lastSessionSave = 0;
 let lastProgress = 0;
 let seekingUntil = 0;
@@ -157,63 +91,22 @@ let lastMediaSync = 0;
 let mediaBound = false;
 let normBound = false;
 let translateBound = false;
-let quietSince = 0;
 let skipGuard = 0;
-
 let loadChain: Promise<void> = Promise.resolve();
 let navSeq = 0;
-let lastLoadAt = 0;
-let stallTimer: number | null = null;
-let stallAt = 0;
-let stallSince = 0;
-let recoverStep = 0;
-let lastRecover = 0;
 let radioStarted = false;
 
 export const usePlayerStore = defineStore("player", {
   state: (): PlayerState => {
     const s = loadPlaybackSettings();
+    const initial = createInitialPlayerState();
     return {
-      queue: [],
-      sourceQueue: [],
-      index: -1,
-      current: null,
-      isPlaying: false,
-      progress: 0,
-      duration: 0,
+      ...initial,
       volume: s.volume,
       muted: s.muted,
       quality: s.quality,
       playbackRate: s.playbackRate,
       repeat: s.repeat,
-      shuffle: false,
-      currentCodec: null,
-      currentBitrate: null,
-      currentSource: null,
-      playingLocal: false,
-      censorReplaced: false,
-      censorAvailable: false,
-      loading: false,
-      waveBatchId: null,
-      waveSessionId: null,
-      isWave: false,
-      stationId: null,
-      stationName: null,
-      fetchingMore: false,
-      seenIds: [],
-      lyrics: null,
-      lyricsLoading: false,
-      lyricsError: null,
-      lyricsOrigin: null,
-      lyricsPick: null,
-      lyricsTranslation: null,
-      lyricsTranslateKey: null,
-      lyricsTranslateLoading: false,
-      showLyrics: false,
-      lyricsFullscreen: false,
-      fullscreen: false,
-      waveError: null,
-      pendingResume: false,
     };
   },
 
@@ -259,157 +152,66 @@ export const usePlayerStore = defineStore("player", {
     },
 
     bind() {
-      if (isNativeAudio) {
-        void initNativeAudio({
-          onPlaybackState: (isPlaying, state) => {
-            this.isPlaying = isPlaying;
-            updatePlaybackState(isPlaying, Boolean(this.current));
-            updatePositionState(this.duration, this.progress, this.playbackRate);
-          },
-          onProgress: (posMs, durMs) => {
-            const currentSec = posMs / 1000;
-            if (seekingTarget !== null) {
-              if (Math.abs(currentSec - seekingTarget) < 2.0 || Date.now() > seekingUntil) {
-                seekingTarget = null;
-              } else {
-                return;
-              }
+      const driver = getAudioDriver();
+      void driver.init({
+        onPlaybackState: (isPlaying, _state) => {
+          this.isPlaying = isPlaying;
+          updatePlaybackState(isPlaying, Boolean(this.current));
+          updatePositionState(this.duration, this.progress, this.playbackRate);
+        },
+        onProgress: (posSec, durSec) => {
+          if (seekingTarget !== null) {
+            if (Math.abs(posSec - seekingTarget) < 2.0 || Date.now() > seekingUntil) {
+              seekingTarget = null;
+            } else {
+              return;
             }
-            const previous = lastProgress;
-            this.progress = currentSec;
-            if (durMs > 0) {
-              const durSec = durMs / 1000;
-              if (durSec > 0 && isFinite(durSec)) {
-                this.duration = durSec;
-              }
-            }
-            lastProgress = this.progress;
-
-            const delta = this.progress - previous;
-            if (delta > 0 && delta < 6 && this.isPlaying) {
-              useStatsStore().tick(delta);
-            }
-          },
-          onEnded: () => {
-            if (useSleepStore().onTrackEnded()) return;
-            if (useTogetherStore().isGuest) return;
-            void this.next(true);
-          },
-          onMediaButtonAction: (action) => {
-            if (action === "next") void this.next();
-            else if (action === "prev") void this.prev();
-            else if (action === "like" && this.current) void this.like();
-          },
-          onBackPressed: () => {
-            if (this.fullscreen) {
-              this.fullscreen = false;
-            }
-          },
-        });
-
-        watch(
-          () => this.fullscreen,
-          (open) => {
-            void nativeSetFullscreen(open);
           }
-        );
-      }
+          const previous = lastProgress;
+          this.progress = posSec;
+          if (durSec > 0 && Number.isFinite(durSec)) {
+            this.duration = durSec;
+          }
+          lastProgress = this.progress;
+
+          const delta = this.progress - previous;
+          if (delta > 0 && delta < 6 && this.isPlaying) {
+            useStatsStore().tick(delta);
+          }
+
+          const now = Date.now();
+          if (now - lastSessionSave > 5000) {
+            lastSessionSave = now;
+            this.persistSession();
+          }
+        },
+        onEnded: () => {
+          if (useSleepStore().onTrackEnded()) return;
+          if (useTogetherStore().isGuest) return;
+          void this.next(true);
+        },
+        onMediaButtonAction: (action) => {
+          if (action === "next") void this.next();
+          else if (action === "prev") void this.prev();
+          else if (action === "like" && this.current) void this.like();
+        },
+        onBackPressed: () => {
+          if (this.fullscreen) {
+            this.fullscreen = false;
+          }
+        },
+      });
+
+      watch(
+        () => this.fullscreen,
+        (open) => {
+          void driver.setFullscreen?.(open);
+        },
+      );
 
       if (useUiStore().settings.censorBypass) void ensureCensorList();
-      audio.volume = this.muted ? 0 : this.volume;
-      audio.playbackRate = this.playbackRate;
-      const startSettings = useUiStore().settings;
-      if (startSettings.trimSilence || startSettings.gaplessEnabled) {
-        ensureAnalyser();
-      }
-      audio.ontimeupdate = () => {
-        const previous = lastProgress;
-        if (isFinite(audio.currentTime) && !isNaN(audio.currentTime)) {
-          this.progress = audio.currentTime;
-        }
-        if (isFinite(audio.duration) && !isNaN(audio.duration) && audio.duration > 0) {
-          this.duration = audio.duration;
-        }
-        lastProgress = this.progress;
-
-        if (Date.now() - lastMediaSync > 1000) {
-          lastMediaSync = Date.now();
-          updatePositionState(this.duration, this.progress, this.playbackRate);
-        }
-
-        const delta = this.progress - previous;
-        if (delta > 0 && delta < 6 && !audio.paused) {
-          useStatsStore().tick(delta);
-        }
-
-        const settings = useUiStore().settings;
-        // Хвостовую тишину режем и вручную, и автоматически в gapless:
-        // иначе «встык» ломается о тихий хвост дорожки.
-        const gapless = settings.gaplessEnabled;
-        if (
-          (settings.trimSilence || gapless) &&
-          this.duration > 20 &&
-          !audio.paused
-        ) {
-          const left = this.duration - this.progress;
-          const minLeft = gapless ? 0.2 : 1.5;
-          const quietLevel = gapless ? 0.007 : 0.004;
-          const hold = gapless ? 380 : 1100;
-          if (left > minLeft && left < 25) {
-            if (currentLevel() < quietLevel) {
-              if (quietSince === 0) quietSince = Date.now();
-              else if (Date.now() - quietSince > hold) {
-                quietSince = 0;
-                if (!useTogetherStore().isGuest) void this.next(true);
-              }
-            } else {
-              quietSince = 0;
-            }
-          } else {
-            quietSince = 0;
-          }
-        }
-
-        const now = Date.now();
-        if (now - lastSessionSave > 5000) {
-          lastSessionSave = now;
-          this.persistSession();
-        }
-      };
-      audio.onended = () => {
-        if (useSleepStore().onTrackEnded()) return;
-        if (useTogetherStore().isGuest) return;
-        void this.next(true);
-      };
-      audio.onplay = () => {
-        this.isPlaying = true;
-        resumeAudioContext();
-        updatePlaybackState(true, Boolean(this.current));
-        updatePositionState(this.duration, this.progress, this.playbackRate);
-      };
-      audio.onpause = () => {
-        this.isPlaying = false;
-        updatePlaybackState(false, Boolean(this.current));
-        this.persistSession();
-      };
-      audio.onplaying = () => {
-        stallAt = audio.currentTime;
-        stallSince = 0;
-        recoverStep = 0;
-      };
-      audio.onerror = () => {
-        if (!this.current || this.loading) return;
-        log.warn("audio error", audio.error?.code ?? null);
-        void this.recoverPlayback(audio.currentTime, true);
-      };
-
-      useEqualizerStore().apply();
-
-      if (stallTimer === null) {
-        stallTimer = window.setInterval(() => {
-          this.watchStall();
-        }, 2000);
-      }
+      void driver.setVolume(this.muted ? 0 : this.volume);
+      void driver.setPlaybackRate(this.playbackRate);
 
       this.setupMediaSession();
 
@@ -436,7 +238,7 @@ export const usePlayerStore = defineStore("player", {
 
     setupMediaSession() {
       if (!mediaSessionAvailable()) return;
-      // Системные медиа-контролы всегда включены: отдельной настройки больше нет.
+      const driver = getAudioDriver();
       const sync = () => {
         setMediaSessionEnabled(true);
         bindMediaSession({
@@ -444,22 +246,19 @@ export const usePlayerStore = defineStore("player", {
             if (this.pendingResume) {
               void this.loadCurrent({ startAt: this.progress, autoplay: true });
             } else {
-              void safePlay();
+              void driver.resume();
             }
           },
           pause: () => {
-            if (isNativeAudio) void nativePause().catch(() => {});
-            audio.pause();
+            void driver.pause();
           },
           stop: () => {
-            if (isNativeAudio) void nativePause().catch(() => {});
-            audio.pause();
+            void driver.pause();
           },
           next: () => void this.next(),
           prev: () => void this.prev(),
           seekTo: (time) => this.seek(time),
-          seekBy: (offset) =>
-            this.seek((audio.currentTime || this.progress) + offset),
+          seekBy: (offset) => this.seek(this.progress + offset),
         });
         updateMediaMetadata(this.current);
         updatePlaybackState(this.isPlaying, Boolean(this.current));
@@ -468,8 +267,6 @@ export const usePlayerStore = defineStore("player", {
       sync();
       if (!mediaBound) {
         mediaBound = true;
-        // Метаданные и обложку переотправляем при каждой смене трека
-        // и паузе, иначе системная плашка зависает на старом треке.
         watch(
           () => [this.current?.id ?? null, this.isPlaying] as const,
           () => sync(),
@@ -546,21 +343,7 @@ export const usePlayerStore = defineStore("player", {
     },
 
     remember(tracks: Track[]) {
-      for (const t of tracks) this.seenIds.push(t.id);
-      try {
-        const hist = readCache<string[]>(WAVE_HISTORY_KEY) ?? [];
-        const set = new Set(hist);
-        for (const t of tracks) {
-          if (!set.has(t.id)) {
-            set.add(t.id);
-            hist.push(t.id);
-          }
-        }
-        writeCache(WAVE_HISTORY_KEY, hist.slice(-WAVE_HISTORY_LIMIT));
-      } catch {}
-      if (this.seenIds.length > SEEN_LIMIT) {
-        this.seenIds = this.seenIds.slice(-SEEN_LIMIT);
-      }
+      this.seenIds = rememberSeenTracks(this.seenIds, tracks);
     },
 
     async startWave(stationId?: string, stationName?: string) {
@@ -574,46 +357,10 @@ export const usePlayerStore = defineStore("player", {
           .catch(() => undefined);
         radioStarted = true;
 
-        const history = readCache<string[]>(WAVE_HISTORY_KEY) ?? [];
-
-        const recent = new Set<string>([...history, ...this.seenIds]);
-        const fresh: Track[] = [];
-        let batchId: string | null = null;
-        let fallback: Track[] = [];
-        let sessionId: string | null = null;
-        const delivered: string[] = [];
-
-        for (let attempt = 0; attempt < 6 && fresh.length < 8; attempt++) {
-          const res = await api.wave(
-            sessionId ? { station, sessionId, queue: delivered } : { station },
-          );
-          if (res.radio_session_id) sessionId = res.radio_session_id;
-          if (!res.tracks.length) break;
-          batchId = res.batch_id ?? batchId;
-          if (!fallback.length) fallback = res.tracks;
-          for (const t of res.tracks) {
-            delivered.push(t.id);
-            if (recent.has(t.id) || fresh.some((c) => c.id === t.id)) continue;
-            recent.add(t.id);
-            fresh.push(t);
-          }
-          if (!sessionId) break;
-        }
-
-        let tracks = dedupeTracks(fresh);
-        if (!tracks.length) {
-          const playing = this.current?.id;
-          const deduped = dedupeTracks(fallback).filter(
-            (t) => t.id !== playing,
-          );
-          const offset = deduped.length
-            ? Math.floor(Date.now() / 1000) % deduped.length
-            : 0;
-          tracks = offset
-            ? [...deduped.slice(offset), ...deduped.slice(0, offset)]
-            : deduped;
-        }
-        if (!tracks.length) throw new Error("Ротор вернул пустой плейлист");
+        const { tracks, batchId, sessionId } = await fetchInitialWaveTracks(
+          station,
+          this.seenIds,
+        );
 
         this.stationId = station;
         if (stationName) this.stationName = stationName;
@@ -626,7 +373,6 @@ export const usePlayerStore = defineStore("player", {
         this.remember(tracks);
         this.index = 0;
         this.isWave = true;
-        writeCache(`wave.last.${station}`, tracks.slice(0, 30));
         await this.loadCurrent();
       } catch (e) {
         const message =
@@ -686,7 +432,6 @@ export const usePlayerStore = defineStore("player", {
       this.current = track;
       this.progress = startAt;
       lastProgress = startAt;
-      quietSince = 0;
       updateMediaMetadata(track);
       updatePositionState(
         (track.duration_ms ?? 0) / 1000,
@@ -702,20 +447,11 @@ export const usePlayerStore = defineStore("player", {
       this.lyricsPick = null;
       const token = nextSourceToken();
       const ui = useUiStore().settings;
-      const rapid = Date.now() - lastLoadAt < 900;
-      lastLoadAt = Date.now();
       if (ui.normalizeVolume) resetNormalization();
-      const fadeMs =
-        ui.crossfadeEnabled && !ui.gaplessEnabled && !rapid
-          ? Math.round(Math.max(0, ui.crossfadeSeconds) * 1000)
-          : 0;
-      stallAt = startAt;
-      stallSince = 0;
-      recoverStep = 0;
-      try {
-        if (fadeMs > 0) await fadeOut(Math.min(fadeMs, 1200));
 
+      try {
         let source: string | null = null;
+        let rawStreamUrl = "";
         this.playingLocal = false;
         this.censorReplaced = false;
         this.censorAvailable = false;
@@ -784,7 +520,6 @@ export const usePlayerStore = defineStore("player", {
           }
         }
 
-        let rawStreamUrl = "";
         if (!source) {
           const stream = await log.time(`stream ${track.id}`, () =>
             api.stream(track.id, this.quality),
@@ -792,81 +527,29 @@ export const usePlayerStore = defineStore("player", {
           if (!isCurrentToken(token)) return;
           this.currentCodec = stream.codec;
           this.currentBitrate = stream.bitrate;
-          this.currentSource = stream.source;
+          this.currentSource = "network";
           rawStreamUrl = stream.url;
           source = proxyStream(stream.url);
           logQuality({
             title: track.title,
             codec: stream.codec,
             bitrate: stream.bitrate,
-            source: stream.source,
+            source: "network",
             requested: this.quality,
           });
         }
 
         if (!isCurrentToken(token)) return;
-        const target = this.muted ? 0 : this.volume;
-        cancelFade(fadeMs > 0 && autoplay ? 0 : target);
 
-        if (isNativeAudio) {
-          try {
-            await nativePlay({
-              id: track.id,
-              title: track.title,
-              artist: artistNames(track.artists),
-              album: track.album_title,
-              coverUrl: track.cover_url,
-              streamUrl: rawStreamUrl || source,
-              startPositionMs: Math.round(startAt * 1000),
-            });
-            void nativeSetRepeat(this.repeat);
-            this.isPlaying = autoplay;
-          } catch (nativeErr) {
-            log.warn("nativePlay failed, falling back to HTML5 audio:", nativeErr);
-            audio.src = rawStreamUrl || source;
-            audio.playbackRate = this.playbackRate;
-            if (startAt > 0) {
-              const seekOnce = () => {
-                audio.removeEventListener("loadedmetadata", seekOnce);
-                try {
-                  audio.currentTime = startAt;
-                } catch {}
-              };
-              audio.addEventListener("loadedmetadata", seekOnce);
-            }
-            if (autoplay) {
-              await safePlay(token);
-              if (fadeMs > 0 && isCurrentToken(token)) {
-                void fadeIn(target, Math.min(fadeMs, 2500));
-              }
-            } else {
-              audio.load();
-              this.isPlaying = false;
-            }
-          }
-        } else {
-          audio.src = source;
-          audio.playbackRate = this.playbackRate;
-          useEqualizerStore().apply();
-          if (startAt > 0) {
-            const seekOnce = () => {
-              audio.removeEventListener("loadedmetadata", seekOnce);
-              try {
-                audio.currentTime = startAt;
-              } catch {}
-            };
-            audio.addEventListener("loadedmetadata", seekOnce);
-          }
-          if (autoplay) {
-            await safePlay(token);
-            if (fadeMs > 0 && isCurrentToken(token)) {
-              void fadeIn(target, Math.min(fadeMs, 2500));
-            }
-          } else {
-            audio.load();
-            this.isPlaying = false;
-          }
-        }
+        const driver = getAudioDriver();
+        await driver.play({
+          track,
+          streamUrl: rawStreamUrl || source,
+          startPositionSeconds: startAt,
+        });
+        void driver.setRepeat(this.repeat);
+        this.isPlaying = autoplay;
+
         this.persistSession();
         void this.prefetchNext();
         if (this.isWave) {
@@ -879,17 +562,8 @@ export const usePlayerStore = defineStore("player", {
         }
         if (this.showLyrics) void this.loadLyrics();
       } catch (e) {
-        const name = (e as DOMException | undefined)?.name;
         log.error("loadCurrent failed", e);
-        if (!isCurrentToken(token) || name === "AbortError") return;
-        if (name === "NotAllowedError") {
-          this.isPlaying = false;
-          resumeOnGesture(() => {
-            void this.play();
-          });
-          return;
-        }
-        cancelFade(this.muted ? 0 : this.volume);
+        if (!isCurrentToken(token)) return;
         Notify.create({
           type: "negative",
           message:
@@ -897,32 +571,14 @@ export const usePlayerStore = defineStore("player", {
         });
       } finally {
         this.loading = false;
-        if (isCurrentToken(token) && fadeMs === 0) {
-          cancelFade(this.muted ? 0 : this.volume);
-        }
       }
     },
 
     dedupeQueue() {
-      const seen = new Set<string>();
-      const cleaned: Track[] = [];
-      let index = this.index;
-      this.queue.forEach((track, position) => {
-        if (track?.id && !seen.has(track.id)) {
-          seen.add(track.id);
-          cleaned.push(track);
-          return;
-        }
-        if (position <= index && index > 0) index -= 1;
-      });
-      if (cleaned.length !== this.queue.length) {
-        this.queue = cleaned;
-        this.index = Math.min(index, Math.max(cleaned.length - 1, 0));
-      }
-      const cleanedSource = dedupeTracks(this.sourceQueue);
-      if (cleanedSource.length !== this.sourceQueue.length) {
-        this.sourceQueue = cleanedSource;
-      }
+      const res = dedupeQueueHelper(this.queue, this.index);
+      this.queue = res.queue;
+      this.index = res.newIndex;
+      this.sourceQueue = dedupeTracks(this.sourceQueue);
     },
 
     async prefetchNext() {
@@ -980,7 +636,7 @@ export const usePlayerStore = defineStore("player", {
               bitrate: stream.bitrate,
               local: false,
               censored: false,
-              source: stream.source,
+              source: "network",
             });
             await api.prefetchStream(stream.url).catch(() => undefined);
             log.info("prefetched from network", next.title, stream.codec);
@@ -990,7 +646,6 @@ export const usePlayerStore = defineStore("player", {
         }),
       );
 
-      // Gapless: греем медиа-элемент следующим треком, чтобы переход был встык.
       if (ui.gaplessEnabled) {
         const upcoming = this.queue[this.index + 1];
         const entry = upcoming ? prefetched.get(upcoming.id) : undefined;
@@ -1015,35 +670,12 @@ export const usePlayerStore = defineStore("player", {
       this.lyricsTranslation = null;
       this.lyricsTranslateKey = null;
 
-      const key = pick ? `lyrics.${track.id}.${pick}` : `lyrics.${track.id}`;
-      const cached = force ? null : readCache<Lyrics>(key);
-      if (hasText(cached)) {
-        this.lyrics = cached;
-        this.lyricsLoading = false;
-      } else {
-        this.lyrics = null;
-      }
-
       try {
-        const found = await loadTrackLyrics(track, pick, force);
+        const result = await fetchTrackLyrics(track, pick, force);
         if (this.current?.id !== track.id) return;
-        if (found) {
-          this.lyrics = found.lyrics;
-          this.lyricsOrigin = found.origin;
-          this.lyricsError = null;
-          writeCache(key, found.lyrics);
-        } else if (!hasText(this.lyrics)) {
-          this.lyrics = null;
-          this.lyricsOrigin = null;
-          this.lyricsError = "Текста для этого трека нет";
-        }
-      } catch {
-        if (this.current?.id !== track.id) return;
-        if (!hasText(this.lyrics)) {
-          this.lyrics = null;
-          this.lyricsOrigin = null;
-          this.lyricsError = "Не удалось загрузить текст";
-        }
+        this.lyrics = result.lyrics;
+        this.lyricsOrigin = result.origin;
+        this.lyricsError = result.error;
       } finally {
         if (this.current?.id === track.id) this.lyricsLoading = false;
       }
@@ -1072,20 +704,10 @@ export const usePlayerStore = defineStore("player", {
       this.lyricsTranslateLoading = true;
       try {
         const source = lyrics.lines.map((l) => l.text ?? "");
-        const out = await api.translateLines(target, source);
+        const res = await fetchLyricsTranslation(track.id, source, target);
         if (this.current?.id !== track.id || this.lyrics !== lyrics) return;
-        if (out.length === source.length) {
-          this.lyricsTranslation = out;
-          this.lyricsTranslateKey = key;
-        } else {
-          this.lyricsTranslation = null;
-          this.lyricsTranslateKey = null;
-        }
-      } catch {
-        if (this.current?.id === track.id && this.lyrics === lyrics) {
-          this.lyricsTranslation = null;
-          this.lyricsTranslateKey = null;
-        }
+        this.lyricsTranslation = res.translation;
+        this.lyricsTranslateKey = res.key;
       } finally {
         if (this.current?.id === track.id) this.lyricsTranslateLoading = false;
       }
@@ -1133,14 +755,7 @@ export const usePlayerStore = defineStore("player", {
       const track = this.current;
       if (!track) return;
 
-      const ready =
-        this.lyrics?.track_id === track.id
-          ? this.lyrics
-          : readCache<Lyrics>(`lyrics.${track.id}`);
-
-      if (ready?.lines?.length) {
-        this.lyrics = ready;
-        this.lyricsError = null;
+      if (this.lyrics?.lines?.length && this.lyrics.track_id === track.id) {
         this.fullscreen = false;
         this.showLyrics = true;
         this.lyricsFullscreen = true;
@@ -1159,6 +774,7 @@ export const usePlayerStore = defineStore("player", {
         this.lyricsFullscreen = true;
       }
     },
+
     toggleLyricsFullscreen() {
       this.lyricsFullscreen = !this.lyricsFullscreen;
     },
@@ -1167,8 +783,8 @@ export const usePlayerStore = defineStore("player", {
       if (!setPrefersOriginal(id, original)) return;
       prefetched.delete(id);
       if (this.current?.id !== id) return;
-      const position = audio.currentTime;
-      const wasPlaying = !audio.paused;
+      const position = this.progress;
+      const wasPlaying = this.isPlaying;
       await this.loadCurrent({ startAt: position, autoplay: wasPlaying });
     },
 
@@ -1178,42 +794,15 @@ export const usePlayerStore = defineStore("player", {
       this.persist();
       if (!this.current) return;
       if (overrideUrl(this.current.id)) return;
-      const position = audio.currentTime;
-      const wasPlaying = !audio.paused;
-      try {
-        const stream = await api.stream(this.current.id, quality);
-        this.currentCodec = stream.codec;
-        this.currentBitrate = stream.bitrate;
-        this.currentSource = stream.source;
-        logQuality({
-          title: this.current.title,
-          codec: stream.codec,
-          bitrate: stream.bitrate,
-          source: stream.source,
-          requested: quality,
-        });
-        await api.prefetchStream(stream.url).catch(() => undefined);
-        audio.src = proxyStream(stream.url);
-        const restore = () => {
-          audio.removeEventListener("loadedmetadata", restore);
-          try {
-            audio.currentTime = position;
-          } catch {}
-        };
-        audio.addEventListener("loadedmetadata", restore);
-        audio.playbackRate = this.playbackRate;
-        if (wasPlaying) await safePlay();
-      } catch {
-        Notify.create({
-          type: "negative",
-          message: "Не удалось сменить качество",
-        });
-      }
+      const position = this.progress;
+      const wasPlaying = this.isPlaying;
+      await this.loadCurrent({ startAt: position, autoplay: wasPlaying });
     },
 
     setPlaybackRate(rate: number) {
       this.playbackRate = rate;
-      audio.playbackRate = rate;
+      const driver = getAudioDriver();
+      void driver.setPlaybackRate(rate);
       this.persist();
       updatePositionState(this.duration, this.progress, rate);
     },
@@ -1221,47 +810,29 @@ export const usePlayerStore = defineStore("player", {
     cycleRepeat() {
       const order: RepeatMode[] = ["off", "all", "one"];
       const next = order[(order.indexOf(this.repeat) + 1) % order.length];
-      this.repeat = next ?? "off";
-      this.persist();
-      if (isNativeAudio) {
-        void nativeSetRepeat(this.repeat);
-      }
+      this.setRepeat(next ?? "off");
     },
 
     setRepeat(mode: RepeatMode) {
       this.repeat = mode;
       this.persist();
-      if (isNativeAudio) {
-        void nativeSetRepeat(this.repeat);
-      }
+      const driver = getAudioDriver();
+      void driver.setRepeat(mode);
     },
 
     toggleShuffle() {
       if (!this.queue.length) return;
       if (this.shuffle) {
-        const currentId = this.current?.id;
-        this.queue = [...this.sourceQueue];
-        this.index = Math.max(
-          0,
-          this.queue.findIndex((t) => t.id === currentId),
-        );
+        const res = unshuffleQueue(this.sourceQueue, this.current?.id);
+        this.queue = res.queue;
+        this.index = res.newIndex;
         this.shuffle = false;
         return;
       }
 
-      const rest = this.queue.filter((_, i) => i !== this.index);
-      for (let i = rest.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        const a = rest[i];
-        const b = rest[j];
-        if (a && b) {
-          rest[i] = b;
-          rest[j] = a;
-        }
-      }
-      const head = this.queue[this.index];
-      this.queue = head ? [head, ...rest] : rest;
-      this.index = 0;
+      const res = shuffleQueue(this.queue, this.index);
+      this.queue = res.queue;
+      this.index = res.newIndex;
       this.shuffle = true;
     },
 
@@ -1271,32 +842,22 @@ export const usePlayerStore = defineStore("player", {
         void this.loadCurrent({ startAt: this.progress, autoplay: true });
         return;
       }
-      if (isNativeAudio) {
-        if (this.isPlaying) {
-          void nativePause().catch(() => {});
-          audio.pause();
-          this.isPlaying = false;
-        } else {
-          void nativeResume().catch(() => {});
-          if (audio.src && audio.paused) void safePlay();
-          this.isPlaying = true;
-        }
-        return;
+      const driver = getAudioDriver();
+      if (this.isPlaying) {
+        void driver.pause();
+        this.isPlaying = false;
+      } else {
+        void driver.resume();
+        this.isPlaying = true;
       }
-      if (audio.paused) void safePlay();
-      else audio.pause();
     },
 
     async next(auto = false) {
       if (useTogetherStore().isGuest) return;
       if (auto && this.repeat === "one") {
-        if (isNativeAudio) {
-          void nativeSeek(0);
-          void nativeResume();
-          return;
-        }
-        audio.currentTime = 0;
-        await safePlay();
+        const driver = getAudioDriver();
+        void driver.seek(0);
+        void driver.resume();
         return;
       }
 
@@ -1336,8 +897,8 @@ export const usePlayerStore = defineStore("player", {
       if (ui.autoWaveOnQueueEnd && (await this.continueWithWave())) return;
 
       this.isPlaying = false;
-      if (isNativeAudio) void nativePause().catch(() => {});
-      audio.pause();
+      const driver = getAudioDriver();
+      void driver.pause();
     },
 
     async ensureRadioStarted() {
@@ -1369,33 +930,21 @@ export const usePlayerStore = defineStore("player", {
     },
 
     async rescueWave(station: string) {
-      try {
-        const res = await api.wave(
-          this.waveSessionId
-            ? { station, sessionId: this.waveSessionId, queue: this.queue.map((t) => t.id) }
-            : { station },
-        );
-        if (res.radio_session_id) this.waveSessionId = res.radio_session_id;
-        if (res.batch_id) this.waveBatchId = res.batch_id;
-        const playing = this.current?.id;
-        const all = dedupeTracks(res.tracks).filter((t) => t.id !== playing);
-        if (!all.length) return 0;
-        const inQueue = new Set(this.queue.map((t) => t.id));
-        const tail = all.filter((t) => !inQueue.has(t.id));
-        if (tail.length) {
-          this.queue.push(...tail);
-          if (this.sourceQueue !== this.queue) this.sourceQueue.push(...tail);
-          this.remember(tail);
-          this.dedupeQueue();
-          return tail.length;
-        }
-        this.queue.push(...all);
-        if (this.sourceQueue !== this.queue) this.sourceQueue.push(...all);
-        return all.length;
-      } catch (error) {
-        log.warn("rescueWave failed", error);
-        return 0;
-      }
+      const res = await rescueWaveTracks(
+        station,
+        this.waveSessionId,
+        this.queue,
+        this.current?.id,
+      );
+      if (res.sessionId) this.waveSessionId = res.sessionId;
+      if (res.batchId) this.waveBatchId = res.batchId;
+      if (!res.tracks.length) return 0;
+
+      this.queue.push(...res.tracks);
+      if (this.sourceQueue !== this.queue) this.sourceQueue.push(...res.tracks);
+      this.remember(res.tracks);
+      this.dedupeQueue();
+      return res.tracks.length;
     },
 
     async continueWithWave(): Promise<boolean> {
@@ -1440,57 +989,6 @@ export const usePlayerStore = defineStore("player", {
       }
     },
 
-    watchStall() {
-      if (isNativeAudio) return;
-      if (!this.current || audio.paused || this.loading || this.pendingResume) {
-        stallAt = audio.currentTime;
-        stallSince = 0;
-        return;
-      }
-      if (Math.abs(audio.currentTime - stallAt) > 0.05) {
-        stallAt = audio.currentTime;
-        stallSince = 0;
-        recoverStep = 0;
-        return;
-      }
-      const now = Date.now();
-      if (stallSince === 0) {
-        stallSince = now;
-        return;
-      }
-      if (now - stallSince < 5000) return;
-      stallSince = now;
-      void this.recoverPlayback(audio.currentTime, false);
-    },
-
-    async recoverPlayback(at: number, hard: boolean) {
-      const now = Date.now();
-      if (now - lastRecover < 4000) return;
-      lastRecover = now;
-      const track = this.current;
-      if (!track) return;
-      const position = Number.isFinite(at) && at > 0 ? at : this.progress;
-      recoverStep = hard ? 3 : recoverStep + 1;
-      log.warn(
-        "playback stuck, recovering",
-        track.title,
-        position,
-        recoverStep,
-      );
-
-      if (recoverStep < 3) {
-        try {
-          audio.currentTime = Math.max(0, position + 0.4);
-        } catch {}
-        await safePlay().catch(() => undefined);
-        return;
-      }
-
-      recoverStep = 0;
-      prefetched.delete(track.id);
-      await this.loadCurrent({ startAt: position, autoplay: true });
-    },
-
     async extendWave() {
       if (useTogetherStore().isGuest) return 0;
       if (this.fetchingMore || !this.isWave) return 0;
@@ -1499,39 +997,25 @@ export const usePlayerStore = defineStore("player", {
       try {
         await this.ensureRadioStarted();
         const station = this.stationId ?? DEFAULT_STATION;
-        for (let attempt = 0; attempt < 4 && added === 0; attempt++) {
-          const res = await api.wave(
-            this.waveSessionId
-              ? {
-                  station,
-                  sessionId: this.waveSessionId,
-                  queue: this.queue.map((t) => t.id),
-                }
-              : { station },
-          );
-          if (res.radio_session_id) this.waveSessionId = res.radio_session_id;
-          if (res.batch_id) this.waveBatchId = res.batch_id;
+        const res = await fetchMoreWaveTracks(
+          station,
+          this.waveSessionId,
+          this.queue,
+          this.seenIds,
+        );
+        if (res.sessionId) this.waveSessionId = res.sessionId;
+        if (res.batchId) this.waveBatchId = res.batchId;
 
-          const known = new Set([
-            ...this.seenIds,
-            ...this.queue.map((t) => t.id),
-          ]);
-          const fresh: Track[] = [];
-          for (const t of res.tracks) {
-            if (known.has(t.id)) continue;
-            known.add(t.id);
-            fresh.push(t);
+        if (res.freshTracks.length) {
+          this.queue.push(...res.freshTracks);
+          if (this.sourceQueue !== this.queue) {
+            this.sourceQueue.push(...res.freshTracks);
           }
-          if (fresh.length) {
-            this.queue.push(...fresh);
-            if (this.sourceQueue !== this.queue) {
-              this.sourceQueue.push(...fresh);
-            }
-            this.remember(fresh);
-            this.dedupeQueue();
-            added = fresh.length;
-          }
+          this.remember(res.freshTracks);
+          this.dedupeQueue();
+          added = res.freshTracks.length;
         }
+
         if (added === 0) added = await this.rescueWave(station);
       } catch (error) {
         log.warn("extendWave failed", error);
@@ -1543,11 +1027,8 @@ export const usePlayerStore = defineStore("player", {
 
     async prev() {
       if (this.progress > 3) {
-        if (isNativeAudio) {
-          void nativeSeek(0);
-        } else {
-          audio.currentTime = 0;
-        }
+        const driver = getAudioDriver();
+        void driver.seek(0);
         return;
       }
       if (this.hasPrev) {
@@ -1563,14 +1044,8 @@ export const usePlayerStore = defineStore("player", {
       lastProgress = target;
       seekingTarget = target;
       seekingUntil = Date.now() + 2500;
-      if (isNativeAudio) {
-        void nativeSeek(target);
-      }
-      try {
-        audio.currentTime = target;
-      } catch {}
-      stallAt = target;
-      stallSince = 0;
+      const driver = getAudioDriver();
+      void driver.seek(target);
       updatePositionState(this.duration, target, this.playbackRate);
       lastMediaSync = Date.now();
     },
@@ -1578,17 +1053,15 @@ export const usePlayerStore = defineStore("player", {
     setVolume(v: number) {
       this.volume = v;
       this.muted = v === 0;
-      if (isNativeAudio) {
-        void nativeSetVolume(v);
-      } else {
-        audio.volume = v;
-      }
+      const driver = getAudioDriver();
+      void driver.setVolume(this.muted ? 0 : v);
       this.persist();
     },
 
     toggleMute() {
       this.muted = !this.muted;
-      audio.volume = this.muted ? 0 : this.volume;
+      const driver = getAudioDriver();
+      void driver.setVolume(this.muted ? 0 : this.volume);
       this.persist();
     },
 
@@ -1620,14 +1093,12 @@ export const usePlayerStore = defineStore("player", {
     },
 
     removeFromQueue(index: number) {
-      if (index < 0 || index >= this.queue.length) return;
-      this.queue.splice(index, 1);
+      const res = removeFromQueueHelper(this.queue, this.index, index);
+      this.queue = res.queue;
       this.sourceQueue = [...this.queue];
-      if (index === this.index) {
-        if (this.index >= this.queue.length) this.index = this.queue.length - 1;
+      this.index = res.newIndex;
+      if (res.shouldReload) {
         void this.loadCurrent();
-      } else if (index < this.index) {
-        this.index -= 1;
       }
     },
 
@@ -1637,8 +1108,8 @@ export const usePlayerStore = defineStore("player", {
       this.index = -1;
       this.current = null;
       this.isPlaying = false;
-      if (isNativeAudio) void nativePause().catch(() => {});
-      audio.pause();
+      const driver = getAudioDriver();
+      void driver.pause();
     },
 
     async waveByTrack(track: Track) {

@@ -7,6 +7,7 @@ import type {
   FeedbackPayload,
   GeniusArtist,
   GeniusHit,
+  GeniusPersonHit,
   GeniusSong,
   LrcLyrics,
   Lyrics,
@@ -238,8 +239,11 @@ export const api = {
   geniusLookup: (token: string, title: string, artist: string, force = false) =>
     call<GeniusSong | null>("genius_lookup", { token, title, artist, force }),
 
-  geniusArtist: (token: string, id: number) =>
-    call<GeniusArtist>("genius_artist", { token, id }),
+  geniusArtist: (token: string, id: number, force = false) =>
+    call<GeniusArtist>("genius_artist", { token, id, force }),
+
+  geniusSearchPeople: (token: string, query: string) =>
+    call<GeniusPersonHit[]>("genius_search_people", { token, query }),
 
   geniusClearCache: () => call<void>("genius_clear_cache"),
 
