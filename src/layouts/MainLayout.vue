@@ -486,7 +486,7 @@ const rightPanel = computed({
   },
 });
 
-const lyricsVisible = computed(() => player.showLyrics && !!player.current);
+const lyricsVisible = computed(() => !isMobile.value && player.showLyrics && !!player.current);
 
 const lyricsBox = computed(() => ({
   top: "40px",

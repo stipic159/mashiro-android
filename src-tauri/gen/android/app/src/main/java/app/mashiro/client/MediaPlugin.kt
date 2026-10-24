@@ -201,14 +201,19 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun setRepeat(invoke: Invoke) {
-        val raw = try { invoke.getRawArgs() } catch (_: Exception) { "{}" }
         var mode = "off"
+        var ok = false
         try {
-            val json = JSONObject(raw)
-            mode = json.optString("mode", "off")
-        } catch (_: Exception) {
+            mode = invoke.parseArgs(RepeatPayload::class.java).mode
+            ok = true
+        } catch (_: Exception) {}
+
+        if (!ok) {
             try {
-                mode = invoke.parseArgs(RepeatPayload::class.java).mode
+                val json = JSONObject(invoke.getRawArgs())
+                if (json.has("mode")) {
+                    mode = json.getString("mode")
+                }
             } catch (_: Exception) {}
         }
         MashiroMediaService.setRepeatMode(mode)
@@ -217,14 +222,19 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun setVolume(invoke: Invoke) {
-        val raw = try { invoke.getRawArgs() } catch (_: Exception) { "{}" }
         var volume = 1.0f
+        var ok = false
         try {
-            val json = JSONObject(raw)
-            volume = json.optDouble("volume", 1.0).toFloat()
-        } catch (_: Exception) {
+            volume = invoke.parseArgs(VolumePayload::class.java).volume
+            ok = true
+        } catch (_: Exception) {}
+
+        if (!ok) {
             try {
-                volume = invoke.parseArgs(VolumePayload::class.java).volume
+                val json = JSONObject(invoke.getRawArgs())
+                if (json.has("volume")) {
+                    volume = json.getDouble("volume").toFloat()
+                }
             } catch (_: Exception) {}
         }
         MashiroMediaService.setVolume(volume)
@@ -233,14 +243,19 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun setPlaybackRate(invoke: Invoke) {
-        val raw = try { invoke.getRawArgs() } catch (_: Exception) { "{}" }
         var rate = 1.0f
+        var ok = false
         try {
-            val json = JSONObject(raw)
-            rate = json.optDouble("rate", 1.0).toFloat()
-        } catch (_: Exception) {
+            rate = invoke.parseArgs(RatePayload::class.java).rate
+            ok = true
+        } catch (_: Exception) {}
+
+        if (!ok) {
             try {
-                rate = invoke.parseArgs(RatePayload::class.java).rate
+                val json = JSONObject(invoke.getRawArgs())
+                if (json.has("rate")) {
+                    rate = json.getDouble("rate").toFloat()
+                }
             } catch (_: Exception) {}
         }
         MashiroMediaService.setPlaybackRate(rate)
@@ -249,17 +264,23 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun setFullscreen(invoke: Invoke) {
-        val raw = try { invoke.getRawArgs() } catch (_: Exception) { "{}" }
         var open = false
+        var ok = false
         try {
-            val json = JSONObject(raw)
-            open = json.optBoolean("open", false)
-        } catch (_: Exception) {
+            open = invoke.parseArgs(FullscreenPayload::class.java).open
+            ok = true
+        } catch (_: Exception) {}
+
+        if (!ok) {
             try {
-                open = invoke.parseArgs(FullscreenPayload::class.java).open
+                val json = JSONObject(invoke.getRawArgs())
+                if (json.has("open")) {
+                    open = json.getBoolean("open")
+                }
             } catch (_: Exception) {}
         }
         isFullscreenOpen = open
+        Log.d("MediaPlugin", "setFullscreen: open=$open, isFullscreenOpen=$isFullscreenOpen")
         invoke.resolve()
     }
 
@@ -278,6 +299,7 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity) {
         @Volatile var isFullscreenOpen: Boolean = false
 
         fun handleBackPress(): Boolean {
+            Log.d("MediaPlugin", "handleBackPress: isFullscreenOpen=$isFullscreenOpen")
             if (isFullscreenOpen) {
                 instance?.emitEvent("android-back-pressed", JSObject())
                 return true

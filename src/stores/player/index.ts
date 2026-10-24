@@ -209,6 +209,7 @@ export const usePlayerStore = defineStore("player", {
         (open) => {
           void driver.setFullscreen?.(open);
         },
+        { immediate: true },
       );
 
       if (useUiStore().settings.censorBypass) void ensureCensorList();
