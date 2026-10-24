@@ -61,7 +61,6 @@ import {
   nativeSetRepeat,
   nativeSetVolume,
 } from "@/lib/nativeAudio";
-import { setTrayTooltip } from "@/lib/tray";
 import { loadSession, saveSession } from "./session";
 import type { PlaybackSettings } from "./settings";
 import { loadPlaybackSettings, savePlaybackSettings } from "./settings";
@@ -387,13 +386,11 @@ export const usePlayerStore = defineStore("player", {
         resumeAudioContext();
         updatePlaybackState(true, Boolean(this.current));
         updatePositionState(this.duration, this.progress, this.playbackRate);
-        void this.syncTray();
       };
       audio.onpause = () => {
         this.isPlaying = false;
         updatePlaybackState(false, Boolean(this.current));
         this.persistSession();
-        void this.syncTray();
       };
       audio.onplaying = () => {
         stallAt = audio.currentTime;
@@ -520,21 +517,12 @@ export const usePlayerStore = defineStore("player", {
       updateMediaMetadata(track);
       updatePlaybackState(false, true);
       updatePositionState(this.duration, this.progress, this.playbackRate);
-      void this.syncTray();
       log.info("session restored", track.title, data.progress);
       if (autoplay) {
         await this.loadCurrent({ startAt: data.progress, autoplay: true });
       }
       if (this.isWave) void this.armWave();
       return true;
-    },
-
-    async syncTray() {
-      const track = this.current;
-      const text = track
-        ? `${track.title} - ${artistNames(track.artists)}`
-        : "Mashiro";
-      await setTrayTooltip(text);
     },
 
     releaseMemory() {
@@ -880,7 +868,6 @@ export const usePlayerStore = defineStore("player", {
           }
         }
         this.persistSession();
-        void this.syncTray();
         void this.prefetchNext();
         if (this.isWave) {
           void api.sendFeedback({

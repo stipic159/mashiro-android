@@ -17,14 +17,11 @@
     <q-header class="border-0 bg-[var(--bg)] text-white shadow-none">
       <div
         class="flex h-[48px] select-none items-center justify-between pl-[20px] flex-nowrap"
-        @mousedown="startWindowDrag"
-        @dblclick="toggleWindowMaximize"
       >
         <span
           class="text-[14px] font-semibold tracking-[-0.02em] text-[#a3a3a3]"
           >mashiro</span
         >
-        <WindowControls />
       </div>
     </q-header>
     <q-page-container>
@@ -120,8 +117,6 @@
 import LoginWelcome from "@/components/login/LoginWelcome.vue";
 import LoginDeviceCode from "@/components/login/LoginDeviceCode.vue";
 import LoginTokenForm from "@/components/login/LoginTokenForm.vue";
-import WindowControls from "@/components/WindowControls.vue";
-import { startWindowDrag, toggleWindowMaximize } from "@/lib/window";
 import { onBeforeUnmount, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";

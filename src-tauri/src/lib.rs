@@ -1,7 +1,6 @@
 mod commands;
 mod files;
 mod genius;
-mod hotkeys;
 mod lrclib;
 mod oauth;
 mod proxy;
@@ -9,22 +8,14 @@ mod state;
 mod sync_server;
 mod together;
 mod translate;
-mod tray;
 mod yandex;
 
 use state::AppState;
-#[cfg(desktop)]
-use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
-
-    #[cfg(desktop)]
-    {
-        builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
-    }
 
     #[cfg(target_os = "android")]
     {
@@ -45,31 +36,6 @@ pub fn run() {
         .manage(AppState::default())
         .manage(together::TogetherState::default())
         .manage(together::relay::RelayState::default())
-        .setup(|app| {
-            #[cfg(desktop)]
-            {
-                for (_, window) in app.webview_windows() {
-                    if let Ok(icon) =
-                        tauri::image::Image::from_bytes(include_bytes!("../icons/256x256.png"))
-                    {
-                        let _ = window.set_icon(icon);
-                    }
-                }
-                tray::build(app.handle())?;
-            }
-            let _ = app;
-            Ok(())
-        })
-        .on_window_event(|window, event| {
-            #[cfg(desktop)]
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" && tray::close_to_tray() {
-                    api.prevent_close();
-                    tray::hide(window.app_handle());
-                }
-            }
-            let _ = (window, event);
-        })
         .invoke_handler(tauri::generate_handler![
             commands::prefetch_stream,
             commands::clear_stream_cache,
@@ -134,13 +100,6 @@ pub fn run() {
             lrclib::lrclib_clear_cache,
             translate::translate_lines,
             translate::translate_clear_cache,
-            tray::set_close_to_tray,
-            tray::set_tray_tooltip,
-            tray::hide_to_tray,
-            tray::show_from_tray,
-            tray::quit_app,
-            hotkeys::set_global_hotkeys,
-            hotkeys::clear_global_hotkeys,
             together::commands::together_host,
             together::commands::together_join,
             together::commands::together_leave,

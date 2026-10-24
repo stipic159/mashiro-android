@@ -220,23 +220,6 @@ export const api = {
   translateLines: (target: string, lines: string[]) =>
     call<string[]>("translate_lines", { target, lines }),
 
-  setTrayTooltip: (text: string) => call<void>("set_tray_tooltip", { text }),
-
-  setCloseToTray: (enabled: boolean) =>
-    call<void>("set_close_to_tray", { enabled }),
-
-  hideToTray: () => call<void>("hide_to_tray"),
-
-  showFromTray: () => call<void>("show_from_tray"),
-
-  quitApp: () => call<void>("quit_app"),
-
-  setGlobalHotkeys: (
-    bindings: Array<{ action: string; accelerator: string }>,
-  ) => call<string[]>("set_global_hotkeys", { bindings }),
-
-  clearGlobalHotkeys: () => call<void>("clear_global_hotkeys"),
-
   exportTextFile: (name: string, content: string, dir?: string | null) =>
     call<string>("export_text_file", { name, content, dir: dir || null }),
 

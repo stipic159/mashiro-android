@@ -97,7 +97,6 @@ export interface InterfaceSettings {
   repeatPlaylistAlways: boolean;
   censorBypass: boolean;
   censorBadge: boolean;
-  minimizeToTray: boolean;
   aiTrackAction: AiTrackAction;
   resumeLastSession: boolean;
   resumeAutoplay: boolean;
@@ -177,7 +176,6 @@ export const defaultInterfaceSettings: InterfaceSettings = {
   repeatPlaylistAlways: false,
   censorBypass: true,
   censorBadge: true,
-  minimizeToTray: true,
   aiTrackAction: "none",
   resumeLastSession: true,
   resumeAutoplay: true,

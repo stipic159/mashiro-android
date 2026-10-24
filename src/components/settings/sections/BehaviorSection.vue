@@ -72,12 +72,6 @@
       </div>
 
       <SettingToggle
-        :model-value="ui.settings.minimizeToTray"
-        label="Закрытие сворачивает в трей"
-        description="Крестик прячет окно в системный трей, музыка продолжает играть. Полностью выйти можно через меню трея."
-        @update:model-value="ui.set('minimizeToTray', $event)"
-      />
-      <SettingToggle
         :model-value="ui.settings.resumeLastSession"
         label="Восстанавливать очередь после запуска"
         description="При старте приложение возвращает трек, очередь и позицию воспроизведения с прошлого раза."

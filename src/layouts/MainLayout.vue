@@ -9,11 +9,7 @@
 
     <!-- Desktop header -->
     <q-header v-else-if="!panels.hidden" class="topbar">
-      <div
-        class="titlebar"
-        @mousedown="startWindowDrag"
-        @dblclick="toggleWindowMaximize"
-      >
+      <div class="titlebar">
         <div class="topbar-search-wrap" data-no-drag>
           <div class="searchbar">
             <Icon name="mingcute:search-2-line" :size="15" class="faint" />
@@ -98,8 +94,6 @@
             </div>
           </q-menu>
         </div>
-
-        <WindowControls />
       </div>
     </q-header>
 
@@ -385,8 +379,6 @@
       />
     </q-page-container>
 
-    <div v-if="panels.hidden" class="tray-idle">Играет в фоновом режиме</div>
-
     <!-- Desktop player footer -->
     <q-footer
       v-if="!isMobile && !panels.hidden"
@@ -427,28 +419,14 @@ import PlayerBar from "@/components/PlayerBar.vue";
 import TogetherDock from "@/components/together/TogetherDock.vue";
 import TrackLyricsDialog from "@/components/TrackLyricsDialog.vue";
 import AppDialog from "@/components/AppDialog.vue";
-import WindowControls from "@/components/WindowControls.vue";
 import MobileHeader from "@/components/mobile/MobileHeader.vue";
 import MobileBottomNav from "@/components/mobile/MobileBottomNav.vue";
 import MobileMiniPlayer from "@/components/mobile/MobileMiniPlayer.vue";
 import MobileFullscreenPlayer from "@/components/mobile/MobileFullscreenPlayer.vue";
 import { useMobile } from "@/composables/useMobile";
 import { trackLyricsDialog } from "@/lib/dialogs";
-import {
-  bindGlobalHotkeyEvents,
-  bindLocalHotkeys,
-  unbindGlobalHotkeyEvents,
-  unbindLocalHotkeys,
-} from "@/lib/hotkeys/runtime";
-import { bindTrayEvents, setCloseToTray } from "@/lib/tray";
-import {
-  releaseStuckPointer,
-  startWindowDrag,
-  toggleWindowMaximize,
-} from "@/lib/window";
 import { useAuthStore } from "@/stores/auth";
 import { useLibraryStore } from "@/stores/library";
-import { useHotkeysStore } from "@/stores/hotkeys";
 import { usePanelsStore } from "@/stores/panels";
 import { usePlayerStore } from "@/stores/player/index";
 import { useUiStore } from "@/stores/ui/index";
@@ -460,7 +438,6 @@ const player = usePlayerStore();
 const library = useLibraryStore();
 const ui = useUiStore();
 const panels = usePanelsStore();
-const hotkeys = useHotkeysStore();
 const { isMobile } = useMobile();
 
 const avatarError = ref(false);
@@ -620,79 +597,21 @@ async function doLogout() {
   void router.replace("/login");
 }
 
-const hotkeyHandlers = {
-  toggle: () => player.toggle(),
-  mute: () => player.toggleMute(),
-  seekForward: () =>
-    player.seek(Math.min(player.duration || 0, player.progress + 5)),
-  seekBackward: () => player.seek(Math.max(0, player.progress - 5)),
-  volumeUp: () =>
-    player.setVolume(Math.round(Math.min(1, player.volume + 0.05) * 100) / 100),
-  volumeDown: () =>
-    player.setVolume(Math.round(Math.max(0, player.volume - 0.05) * 100) / 100),
-  like: () => {
-    void player.like();
-  },
-  dislike: () => {
-    void player.dislike();
-  },
-  repeat: () => player.cycleRepeat(),
-  shuffle: () => player.toggleShuffle(),
-  next: () => {
-    void player.next(false);
-  },
-  prev: () => {
-    void player.prev();
-  },
-  lyrics: () => player.toggleLyrics(),
-  queue: () => panels.toggleQueue(),
-};
-
 onMounted(() => {
   player.bind();
-  hotkeys.load();
-  bindLocalHotkeys((signature) => hotkeys.resolve(signature), hotkeyHandlers);
-  void bindGlobalHotkeyEvents(hotkeyHandlers);
-  void hotkeys.applyGlobal();
   void library.init();
-  void setCloseToTray(ui.settings.minimizeToTray);
   if (ui.settings.resumeLastSession) {
     void player.restoreSession(ui.settings.resumeAutoplay);
   }
-  void bindTrayEvents({
-    onToggle: () => player.toggle(),
-    onNext: () => {
-      void player.next(false);
-    },
-    onPrev: () => {
-      void player.prev();
-    },
-    onLike: () => {
-      void player.like();
-    },
-    onHidden: () => {
-      panels.queueOpen = false;
-      panels.hidden = true;
-      player.releaseMemory();
-    },
-    onShown: () => {
-      panels.hidden = false;
-    },
-  });
 });
 
 watch(
   () => ui.settings,
   () => {
     ui.apply();
-    void setCloseToTray(ui.settings.minimizeToTray);
   },
   { deep: true, immediate: true },
 );
-
-function onWindowFocus() {
-  releaseStuckPointer();
-}
 
 watch(
   () => route.fullPath,
@@ -705,14 +624,6 @@ watch(
   },
   { immediate: true },
 );
-
-window.addEventListener("focus", onWindowFocus);
-
-onBeforeUnmount(() => {
-  window.removeEventListener("focus", onWindowFocus);
-  unbindLocalHotkeys();
-  unbindGlobalHotkeyEvents();
-});
 </script>
 
 <style scoped>

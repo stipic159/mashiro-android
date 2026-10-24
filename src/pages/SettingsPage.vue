@@ -91,7 +91,6 @@ import CacheSection from "@/components/settings/sections/CacheSection.vue";
 import DownloadsSection from "@/components/settings/sections/DownloadsSection.vue";
 import EqualizerSection from "@/components/settings/sections/EqualizerSection.vue";
 import GeniusSection from "@/components/settings/sections/GeniusSection.vue";
-import HotkeysSection from "@/components/settings/sections/HotkeysSection.vue";
 import LayoutSection from "@/components/settings/sections/LayoutSection.vue";
 import LyricsSection from "@/components/settings/sections/LyricsSection.vue";
 import PlayerSection from "@/components/settings/sections/PlayerSection.vue";
@@ -201,14 +200,6 @@ const sections = [
     component: GeniusSection,
   },
   {
-    id: "hotkeys",
-    label: "Горячие клавиши",
-    icon: "mingcute:key-2-line",
-    group: "Система",
-    hint: "кнопки сочетания глобальные",
-    component: HotkeysSection,
-  },
-  {
     id: "about",
     label: "О проекте",
     icon: "mingcute:information-line",
@@ -218,15 +209,7 @@ const sections = [
   },
 ];
 
-const isMobileDevice = Platform.is.mobile || Platform.is.android;
-
-const visibleSections = computed(() => {
-  if (isMobileDevice) {
-    // Hide desktop-only features on mobile
-    return sections.filter((s) => !["hotkeys"].includes(s.id));
-  }
-  return sections;
-});
+const visibleSections = computed(() => sections);
 
 const groups = computed(() => {
   const needle = query.value.trim().toLowerCase();
