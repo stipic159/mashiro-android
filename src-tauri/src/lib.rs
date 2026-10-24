@@ -5,7 +5,6 @@ mod hotkeys;
 mod lrclib;
 mod mini;
 mod oauth;
-mod presence;
 mod proxy;
 mod state;
 mod sync_server;
@@ -14,7 +13,6 @@ mod translate;
 mod tray;
 mod yandex;
 
-use presence::DiscordState;
 use state::AppState;
 #[cfg(desktop)]
 use tauri::Manager;
@@ -46,7 +44,6 @@ pub fn run() {
             proxy::handle(request, responder);
         })
         .manage(AppState::default())
-        .manage(DiscordState::default())
         .manage(together::TogetherState::default())
         .manage(together::relay::RelayState::default())
         .setup(|app| {
@@ -138,11 +135,6 @@ pub fn run() {
             lrclib::lrclib_clear_cache,
             translate::translate_lines,
             translate::translate_clear_cache,
-            presence::validate_discord_app,
-            presence::update_discord_presence,
-            presence::clear_discord_presence,
-            presence::discord_presence_status,
-            presence::reconnect_discord_presence,
             tray::set_close_to_tray,
             tray::set_tray_tooltip,
             tray::hide_to_tray,

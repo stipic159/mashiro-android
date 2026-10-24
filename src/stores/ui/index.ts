@@ -2,7 +2,6 @@ import { defineStore } from "pinia";
 import { applyInterfaceSettings } from "./apply";
 import type { InterfaceSettings } from "./defaults";
 import {
-  DEFAULT_DISCORD_CLIENT_ID,
   defaultInterfaceSettings,
 } from "./defaults";
 import type {
@@ -37,7 +36,6 @@ export {
 
 export type { CoverStyle, Density, InterfaceSettings } from "./defaults";
 export {
-  DEFAULT_DISCORD_CLIENT_ID,
   defaultInterfaceSettings,
 } from "./defaults";
 export type { Palette, ThemeName } from "./themes";
@@ -90,9 +88,6 @@ function load(): InterfaceSettings {
     merged.miniButtons.play = true;
     merged.miniButtons.prev = true;
     merged.miniButtons.next = true;
-    if (!merged.discordClientId.trim()) {
-      merged.discordClientId = DEFAULT_DISCORD_CLIENT_ID;
-    }
     return merged;
   } catch {
     return { ...defaultInterfaceSettings };

@@ -47,7 +47,7 @@ import { useSleepStore } from "@/stores/sleep";
 import { useStatsStore } from "@/stores/stats";
 import { useTogetherStore } from "@/stores/together/index";
 import type { LyricsSource } from "@/stores/ui/defaults";
-import { DEFAULT_DISCORD_CLIENT_ID, useUiStore } from "@/stores/ui/index";
+import { useUiStore } from "@/stores/ui/index";
 import { artistNames } from "@/lib/format";
 import {
   initNativeAudio,
@@ -62,7 +62,6 @@ import {
   nativeSetVolume,
 } from "@/lib/nativeAudio";
 import { setTrayTooltip } from "@/lib/tray";
-import { resetPresenceSignature, syncDiscordPresence } from "./presence";
 import { loadSession, saveSession } from "./session";
 import type { PlaybackSettings } from "./settings";
 import { loadPlaybackSettings, savePlaybackSettings } from "./settings";
@@ -148,14 +147,9 @@ interface PlayerState {
   lyricsFullscreen: boolean;
   fullscreen: boolean;
   waveError: string | null;
-  presenceError: string | null;
-  presenceConnected: boolean;
-  presenceReconnecting: boolean;
-  presenceUser: string | null;
   pendingResume: boolean;
 }
 
-let presenceTimer: number | null = null;
 let lastSessionSave = 0;
 let lastProgress = 0;
 let seekingUntil = 0;
@@ -220,10 +214,6 @@ export const usePlayerStore = defineStore("player", {
       lyricsFullscreen: false,
       fullscreen: false,
       waveError: null,
-      presenceError: null,
-      presenceConnected: false,
-      presenceReconnecting: false,
-      presenceUser: null,
       pendingResume: false,
     };
   },
@@ -397,13 +387,11 @@ export const usePlayerStore = defineStore("player", {
         resumeAudioContext();
         updatePlaybackState(true, Boolean(this.current));
         updatePositionState(this.duration, this.progress, this.playbackRate);
-        void this.syncPresence();
         void this.syncTray();
       };
       audio.onpause = () => {
         this.isPlaying = false;
         updatePlaybackState(false, Boolean(this.current));
-        void this.syncPresence();
         this.persistSession();
         void this.syncTray();
       };
@@ -419,12 +407,6 @@ export const usePlayerStore = defineStore("player", {
       };
 
       useEqualizerStore().apply();
-
-      if (presenceTimer === null) {
-        presenceTimer = window.setInterval(() => {
-          void this.syncPresence();
-        }, 15000);
-      }
 
       if (stallTimer === null) {
         stallTimer = window.setInterval(() => {
@@ -495,81 +477,6 @@ export const usePlayerStore = defineStore("player", {
           () => [this.current?.id ?? null, this.isPlaying] as const,
           () => sync(),
         );
-      }
-    },
-
-    async syncPresence(force = false) {
-      const error = await syncDiscordPresence(
-        {
-          track: this.current,
-          isPlaying: this.isPlaying,
-          progress: this.progress,
-          duration: this.duration,
-          playbackRate: this.playbackRate,
-        },
-        { force },
-      );
-      this.presenceError = error;
-      void this.refreshPresenceStatus();
-      return error;
-    },
-
-    async refreshPresenceStatus() {
-      try {
-        const status = await api.discordPresenceStatus();
-        this.presenceConnected = Boolean(status?.connected);
-        this.presenceUser = status?.user ?? null;
-        this.presenceError = status?.lastError ?? null;
-        log.info("presence status", status);
-      } catch (error) {
-        this.presenceConnected = false;
-        this.presenceUser = null;
-        log.warn("presence status failed", error);
-      }
-      return this.presenceConnected;
-    },
-
-    async reconnectPresence() {
-      const settings = useUiStore().settings;
-      const clientId =
-        settings.discordClientId.trim() || DEFAULT_DISCORD_CLIENT_ID;
-
-      this.presenceReconnecting = true;
-      try {
-        const status = await api.reconnectDiscordPresence(clientId);
-        this.presenceConnected = Boolean(status?.connected ?? true);
-        this.presenceUser = status?.user ?? null;
-        this.presenceError = null;
-        log.info("presence reconnected", status);
-        resetPresenceSignature();
-        const error = await this.syncPresence(true);
-        Notify.create(
-          error
-            ? { type: "negative", message: error }
-            : { message: "Discord подкл����ён заново" },
-        );
-        return error;
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Discord недоступен";
-        this.presenceConnected = false;
-        this.presenceError = message;
-        Notify.create({ type: "negative", message });
-        return message;
-      } finally {
-        this.presenceReconnecting = false;
-      }
-    },
-
-    async testPresence() {
-      resetPresenceSignature();
-      const error = await this.syncPresence(true);
-      if (error) {
-        Notify.create({ type: "negative", message: error });
-      } else if (!this.current) {
-        Notify.create({ message: "Включи трек - статус появится в Discord" });
-      } else {
-        Notify.create({ message: "Статус отправлен в Discord" });
       }
     },
 
@@ -974,7 +881,6 @@ export const usePlayerStore = defineStore("player", {
         }
         this.persistSession();
         void this.syncTray();
-        void this.syncPresence(true);
         void this.prefetchNext();
         if (this.isWave) {
           void api.sendFeedback({
@@ -1323,7 +1229,6 @@ export const usePlayerStore = defineStore("player", {
       audio.playbackRate = rate;
       this.persist();
       updatePositionState(this.duration, this.progress, rate);
-      void this.syncPresence(true);
     },
 
     cycleRepeat() {
@@ -1681,7 +1586,6 @@ export const usePlayerStore = defineStore("player", {
       stallSince = 0;
       updatePositionState(this.duration, target, this.playbackRate);
       lastMediaSync = Date.now();
-      void this.syncPresence(true);
     },
 
     setVolume(v: number) {

@@ -206,13 +206,6 @@ export interface FeedbackPayload {
   total_played_seconds?: number | null;
 }
 
-export interface PresenceStatus {
-  connected: boolean;
-  applicationId: string | null;
-  user?: string | null;
-  lastError?: string | null;
-}
-
 export interface GeniusPerson {
   id: number;
   name: string;
@@ -333,20 +326,4 @@ export interface GeniusPersonHit {
   url: string;
   image: string | null;
   verified: boolean;
-}
-
-export interface PresencePayload {
-  enabled: boolean;
-  applicationId: string;
-  details: string;
-  state: string;
-  album: string;
-  coverUrl: string | null;
-  trackUrl: string;
-  buttonLabel: string;
-  startedAt: number | null;
-  endsAt: number | null;
-  partyId: string | null;
-  partySize: number | null;
-  partyMax: number | null;
 }

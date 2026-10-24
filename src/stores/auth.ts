@@ -58,7 +58,6 @@ export const useAuthStore = defineStore("auth", {
 
     logout() {
       void api.logout().catch(() => undefined);
-      void api.clearDiscordPresence().catch(() => undefined);
       setToken(null);
       this.token = null;
       this.profile = null;

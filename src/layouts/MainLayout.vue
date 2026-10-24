@@ -688,7 +688,6 @@ watch(
   () => ui.settings,
   () => {
     ui.apply();
-    void player.syncPresence();
     void setCloseToTray(ui.settings.minimizeToTray);
   },
   { deep: true, immediate: true },

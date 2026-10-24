@@ -27,8 +27,6 @@ export type LyricsTranslateMode = "under" | "replace";
 // Что делать с треками, помеченными как AI-генерация.
 export type AiTrackAction = "none" | "skip" | "dislike";
 
-export const DEFAULT_DISCORD_CLIENT_ID = "1532382113821753354";
-
 export interface InterfaceSettings {
   theme: ThemeName;
   accent: string;
@@ -102,13 +100,6 @@ export interface InterfaceSettings {
   lyricsTranslateTarget: string;
   lyricsTranslateMode: LyricsTranslateMode;
   togetherShowDock: boolean;
-  discordEnabled: boolean;
-  discordClientId: string;
-  discordDetails: string;
-  discordState: string;
-  discordButtonLabel: string;
-  discordShowArtwork: boolean;
-  discordShowTime: boolean;
   cacheEnabled: boolean;
   downloadDir: string;
   autoSkipDisliked: boolean;
@@ -202,13 +193,6 @@ export const defaultInterfaceSettings: InterfaceSettings = {
   lyricsTranslateTarget: "ru",
   lyricsTranslateMode: "under",
   togetherShowDock: true,
-  discordEnabled: true,
-  discordClientId: DEFAULT_DISCORD_CLIENT_ID,
-  discordDetails: "{title}",
-  discordState: "{artist}",
-  discordButtonLabel: "Слушать в Яндекс Музыке",
-  discordShowArtwork: true,
-  discordShowTime: true,
   cacheEnabled: true,
   downloadDir: "",
   autoSkipDisliked: true,

@@ -88,7 +88,6 @@ import AppearanceSection from "@/components/settings/sections/AppearanceSection.
 import AboutSection from "@/components/settings/sections/AboutSection.vue";
 import BehaviorSection from "@/components/settings/sections/BehaviorSection.vue";
 import CacheSection from "@/components/settings/sections/CacheSection.vue";
-import DiscordSection from "@/components/settings/sections/DiscordSection.vue";
 import DownloadsSection from "@/components/settings/sections/DownloadsSection.vue";
 import EqualizerSection from "@/components/settings/sections/EqualizerSection.vue";
 import GeniusSection from "@/components/settings/sections/GeniusSection.vue";
@@ -211,14 +210,6 @@ const sections = [
     component: GeniusSection,
   },
   {
-    id: "discord",
-    label: "Discord",
-    icon: "simple-icons:discord",
-    group: "Сеть",
-    hint: "discord дискорд статус rpc",
-    component: DiscordSection,
-  },
-  {
     id: "hotkeys",
     label: "Горячие клавиши",
     icon: "mingcute:key-2-line",
@@ -241,7 +232,7 @@ const isMobileDevice = Platform.is.mobile || Platform.is.android;
 const visibleSections = computed(() => {
   if (isMobileDevice) {
     // Hide desktop-only features on mobile
-    return sections.filter((s) => !["mini", "discord", "hotkeys"].includes(s.id));
+    return sections.filter((s) => !["mini", "hotkeys"].includes(s.id));
   }
   return sections;
 });
@@ -300,7 +291,7 @@ async function reset() {
   const ok = await askConfirm({
     title: "Сбросить все настройки?",
     message:
-      "Оформление, интерфейс, текст песни, эквалайзер и Discord вернутся к значениям по умолчанию. Авторизация и кеш останутся на месте.",
+      "Оформление, интерфейс, текст песни и эквалайзер вернутся к значениям по умолчанию. Авторизация и кеш останутся на месте.",
     okLabel: "Сбросить",
     danger: true,
   });
@@ -308,7 +299,6 @@ async function reset() {
   ui.reset();
   equalizer.reset();
   equalizer.toggle(false);
-  void player.syncPresence(true);
   select(sections[0]!.id);
   Notify.create({ message: "Настройки сброшены" });
 }

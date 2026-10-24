@@ -12,8 +12,6 @@ import type {
   Lyrics,
   Playlist,
   PlaylistMembership,
-  PresencePayload,
-  PresenceStatus,
   Quality,
   Profile,
   SearchResult,
@@ -221,19 +219,6 @@ export const api = {
 
   translateLines: (target: string, lines: string[]) =>
     call<string[]>("translate_lines", { target, lines }),
-
-  updateDiscordPresence: (payload: PresencePayload) =>
-    call<void>("update_discord_presence", { payload }),
-
-  clearDiscordPresence: () => call<void>("clear_discord_presence"),
-
-  discordPresenceStatus: () => call<PresenceStatus>("discord_presence_status"),
-
-  reconnectDiscordPresence: (applicationId: string) =>
-    call<PresenceStatus>("reconnect_discord_presence", { applicationId }),
-
-  validateDiscordApp: (applicationId: string) =>
-    call<string>("validate_discord_app", { applicationId }),
 
   setTrayTooltip: (text: string) => call<void>("set_tray_tooltip", { text }),
 
