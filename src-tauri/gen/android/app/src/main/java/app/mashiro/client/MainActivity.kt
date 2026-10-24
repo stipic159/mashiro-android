@@ -5,13 +5,10 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 
 class MainActivity : TauriActivity() {
-  private lateinit var mediaPlugin: MediaPlugin
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
-    mediaPlugin = MediaPlugin(this)
-    getPluginManager().load(null, "media", mediaPlugin, "{}")
 
     onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
       override fun handleOnBackPressed() {

@@ -3,6 +3,7 @@ import type { Track } from "@/api/types";
 export interface PlayTrackPayload {
   track: Track;
   streamUrl: string;
+  fallbackUrl?: string;
   startPositionSeconds?: number;
 }
 

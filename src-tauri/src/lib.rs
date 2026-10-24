@@ -12,6 +12,9 @@ mod yandex;
 
 use state::AppState;
 
+#[cfg(target_os = "android")]
+pub struct MediaPluginHandle<R: tauri::Runtime>(pub tauri::plugin::PluginHandle<R>);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[allow(unused_mut)]
@@ -21,8 +24,10 @@ pub fn run() {
     {
         builder = builder.plugin(
             tauri::plugin::Builder::<tauri::Wry, ()>::new("media")
-                .setup(|_app, api| {
-                    api.register_android_plugin("app.mashiro.client", "MediaPlugin")?;
+                .setup(|app, api| {
+                    use tauri::Manager;
+                    let handle = api.register_android_plugin("app.mashiro.client", "MediaPlugin")?;
+                    app.manage(MediaPluginHandle(handle));
                     Ok(())
                 })
                 .build(),
@@ -37,6 +42,15 @@ pub fn run() {
         .manage(together::TogetherState::default())
         .manage(together::relay::RelayState::default())
         .invoke_handler(tauri::generate_handler![
+            commands::media_play,
+            commands::media_pause,
+            commands::media_resume,
+            commands::media_seek,
+            commands::media_set_volume,
+            commands::media_set_playback_rate,
+            commands::media_set_repeat,
+            commands::media_set_fullscreen,
+            commands::media_get_status,
             commands::prefetch_stream,
             commands::clear_stream_cache,
             commands::auth_login,

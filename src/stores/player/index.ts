@@ -9,6 +9,7 @@ import {
   isCurrentToken,
   nextSourceToken,
   resetNormalization,
+  resumeOnGesture,
   setNormalization,
   warmNext,
 } from "@/lib/audio";
@@ -37,6 +38,7 @@ import { useTogetherStore } from "@/stores/together/index";
 import type { LyricsSource } from "@/stores/ui/defaults";
 import { useUiStore } from "@/stores/ui/index";
 import { getAudioDriver } from "@/stores/audio";
+import { isNativeAudio } from "@/lib/nativeAudio";
 import { loadSession, saveSession } from "./session";
 import type { PlaybackSettings } from "./settings";
 import { loadPlaybackSettings, savePlaybackSettings } from "./settings";
@@ -544,7 +546,8 @@ export const usePlayerStore = defineStore("player", {
         const driver = getAudioDriver();
         await driver.play({
           track,
-          streamUrl: rawStreamUrl || source,
+          streamUrl: isNativeAudio ? (rawStreamUrl || source) : source,
+          fallbackUrl: source,
           startPositionSeconds: startAt,
         });
         void driver.setRepeat(this.repeat);
@@ -564,10 +567,24 @@ export const usePlayerStore = defineStore("player", {
       } catch (e) {
         log.error("loadCurrent failed", e);
         if (!isCurrentToken(token)) return;
+        const name = (e as DOMException | undefined)?.name;
+        if (name === "AbortError") return;
+        if (name === "NotAllowedError") {
+          this.isPlaying = false;
+          resumeOnGesture(() => {
+            void this.toggle();
+          });
+          return;
+        }
+        const message =
+          e instanceof Error
+            ? e.message
+            : typeof e === "string"
+              ? e
+              : "Не удалось воспроизвести трек";
         Notify.create({
           type: "negative",
-          message:
-            e instanceof Error ? e.message : "Не удалось воспроизвести трек",
+          message,
         });
       } finally {
         this.loading = false;

@@ -2,6 +2,7 @@ mod ai;
 mod auth;
 mod catalog;
 mod library;
+pub mod media;
 mod playback;
 mod radio;
 
@@ -9,6 +10,7 @@ pub use ai::*;
 pub use auth::*;
 pub use catalog::*;
 pub use library::*;
+pub use media::*;
 pub use playback::*;
 pub use radio::*;
 
