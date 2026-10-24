@@ -77,6 +77,13 @@ const env = {
   NDK_HOME: ndkHome,
 };
 
+// If Windows user profile contains non-ASCII characters (Cyrillic),
+// LLVM ld.lld linker crashes when loading standard rlibs unless mapped to an ASCII drive.
+if (fs.existsSync("R:\\lib\\rustlib")) {
+  env.RUSTFLAGS = (env.RUSTFLAGS ? env.RUSTFLAGS + " " : "") + "--sysroot=R:";
+  console.log("ℹ️ Non-ASCII path mitigation active: using RUSTFLAGS=--sysroot=R:\n");
+}
+
 // 1. Build Frontend SPA
 const quasarCmd = isRelease ? "npx quasar build" : "npx quasar build -d";
 console.log(`📦 1/4 Compiling Vue 3 / Quasar frontend (${isRelease ? "production" : "debug"})...`);
