@@ -191,9 +191,21 @@ pub fn import_local_track(
     app: AppHandle,
     id: String,
     name: String,
-    bytes: Vec<u8>,
+    bytes: Option<Vec<u8>>,
+    base64_data: Option<String>,
     dir: Option<String>,
 ) -> Result<String, String> {
+    use base64::engine::general_purpose::STANDARD as BASE64;
+    use base64::Engine as _;
+
+    let raw_bytes = if let Some(b) = bytes {
+        b
+    } else if let Some(b64) = base64_data {
+        BASE64.decode(b64.trim()).map_err(|e| format!("Base64 decode error: {e}"))?
+    } else {
+        return Err("No data provided for import".to_string());
+    };
+
     let target_dir = resolve_dir(&app, dir)?;
     std::fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
 
@@ -217,7 +229,7 @@ pub fn import_local_track(
     };
 
     let file = target_dir.join(format!("{} [{id}].{ext}", safe_name(clean_stem)));
-    std::fs::write(&file, &bytes).map_err(|e| e.to_string())?;
+    std::fs::write(&file, &raw_bytes).map_err(|e| e.to_string())?;
 
     Ok(file.to_string_lossy().to_string())
 }

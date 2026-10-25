@@ -320,11 +320,27 @@ async function onFileSelected(e: Event) {
   const file = target.files?.[0];
   if (!file) return;
 
+  const MAX_FILE_SIZE = 150 * 1024 * 1024;
+  if (file.size > MAX_FILE_SIZE) {
+    Notify.create({ type: "negative", message: "Файл слишком большой (максимум 150 МБ)" });
+    target.value = "";
+    return;
+  }
+
   importingFile.value = true;
   try {
-    const buffer = await file.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    const savedPath = await api.importLocalTrack(props.track.id, file.name, bytes);
+    const base64Data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const commaIdx = result.indexOf(",");
+        resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
+      };
+      reader.onerror = () => reject(reader.error || new Error("Ошибка чтения файла"));
+      reader.readAsDataURL(file);
+    });
+
+    const savedPath = await api.importLocalTrack(props.track.id, file.name, { base64Data });
 
     setOverride(props.track.id, savedPath, file.name);
     replaceTick.value += 1;

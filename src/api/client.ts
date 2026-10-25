@@ -147,8 +147,19 @@ export const api = {
   getDownloadedTrackIds: (dir?: string | null) =>
     call<string[]>("get_downloaded_track_ids", { dir: dir || null }),
 
-  importLocalTrack: (id: string, name: string, bytes: number[] | Uint8Array, dir?: string | null) =>
-    call<string>("import_local_track", { id, name, bytes: Array.from(bytes), dir: dir || null }),
+  importLocalTrack: (
+    id: string,
+    name: string,
+    data: { bytes?: number[] | Uint8Array; base64Data?: string },
+    dir?: string | null,
+  ) =>
+    call<string>("import_local_track", {
+      id,
+      name,
+      bytes: data.bytes ? Array.from(data.bytes) : null,
+      base64Data: data.base64Data || null,
+      dir: dir || null,
+    }),
 
   removeLocalTrack: (id: string, dir?: string | null) =>
     call<boolean>("remove_local_track", { id, dir: dir || null }),
