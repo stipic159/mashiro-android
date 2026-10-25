@@ -178,7 +178,7 @@ const sortMode = ref<SortMode>("custom");
 const sortDir = ref<"asc" | "desc">("asc");
 const pickerOpen = ref(false);
 const selectedIds = ref<string[]>([]);
-const lastPicked = ref<number | null>(null);
+const lastPicked = ref<string | null>(null);
 const headerCollapsed = ref(false);
 const virtualRef = ref<{
   scrollTo: (index: number, edge?: string) => void;
@@ -305,7 +305,7 @@ function toggleRow(track: Track, event?: MouseEvent) {
   selectedIds.value = selectedIds.value.includes(track.id)
     ? selectedIds.value.filter((id) => id !== track.id)
     : [...selectedIds.value, track.id];
-  lastPicked.value = track.id as unknown as number;
+  lastPicked.value = track.id;
 }
 
 function toggleSelectAllRows() {

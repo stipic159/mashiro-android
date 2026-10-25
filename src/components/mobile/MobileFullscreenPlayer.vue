@@ -461,9 +461,17 @@ watch(
 );
 
 function onAndroidBack(e: Event) {
-  if (player.fullscreen && stageMode.value !== "cover") {
-    e.stopImmediatePropagation();
-    stageMode.value = "cover";
+  if (player.fullscreen) {
+    if (showTrackMenu.value) {
+      e.stopImmediatePropagation();
+      showTrackMenu.value = false;
+      return;
+    }
+    if (stageMode.value !== "cover") {
+      e.stopImmediatePropagation();
+      stageMode.value = "cover";
+      return;
+    }
   }
 }
 
