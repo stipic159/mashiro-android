@@ -1115,6 +1115,10 @@ export const usePlayerStore = defineStore("player", {
       this.queue = res.queue;
       this.sourceQueue = [...this.queue];
       this.index = res.newIndex;
+      if (this.queue.length === 0) {
+        this.clearQueue();
+        return;
+      }
       if (res.shouldReload) {
         void this.loadCurrent();
       }

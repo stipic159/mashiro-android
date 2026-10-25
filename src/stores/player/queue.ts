@@ -84,6 +84,10 @@ export function removeFromQueue(
   const updated = [...queue];
   updated.splice(removeIndex, 1);
 
+  if (!updated.length) {
+    return { queue: [], newIndex: -1, shouldReload: false };
+  }
+
   if (removeIndex === currentIndex) {
     const nextIndex = Math.min(currentIndex, Math.max(0, updated.length - 1));
     return { queue: updated, newIndex: nextIndex, shouldReload: true };
