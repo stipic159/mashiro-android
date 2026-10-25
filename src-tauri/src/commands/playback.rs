@@ -91,6 +91,38 @@ pub fn find_local_track(
 }
 
 #[tauri::command]
+pub fn get_downloaded_track_ids(
+    app: AppHandle,
+    dir: Option<String>,
+) -> Result<Vec<String>, String> {
+    let root = resolve_dir(&app, dir)?;
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+    let mut ids = Vec::new();
+    let entries = match std::fs::read_dir(&root) {
+        Ok(e) => e,
+        Err(_) => return Ok(Vec::new()),
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+            if let Some(start) = stem.rfind('[') {
+                if let Some(end) = stem.rfind(']') {
+                    if start < end {
+                        ids.push(stem[start + 1..end].to_string());
+                    }
+                }
+            }
+        }
+    }
+    Ok(ids)
+}
+
+#[tauri::command]
 pub async fn download_track(
     app: AppHandle,
     id: String,

@@ -144,6 +144,9 @@ export const api = {
   findLocalTrack: (id: string, dir?: string | null) =>
     call<string | null>("find_local_track", { id, dir: dir || null }),
 
+  getDownloadedTrackIds: (dir?: string | null) =>
+    call<string[]>("get_downloaded_track_ids", { dir: dir || null }),
+
   importLocalTrack: (id: string, name: string, bytes: number[] | Uint8Array, dir?: string | null) =>
     call<string>("import_local_track", { id, name, bytes: Array.from(bytes), dir: dir || null }),
 

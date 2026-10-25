@@ -54,15 +54,12 @@ export function usePlaylistActions(
       localIds.value = new Set();
       return;
     }
-    const found = new Set<string>();
-    const list = tracks.value.slice();
-    for (const track of list) {
-      try {
-        const path = await api.findLocalTrack(track.id, dir);
-        if (path) found.add(track.id);
-      } catch {}
+    try {
+      const ids = await api.getDownloadedTrackIds(dir);
+      localIds.value = new Set(ids);
+    } catch {
+      localIds.value = new Set();
     }
-    localIds.value = found;
   }
 
   function cancelDownload() {

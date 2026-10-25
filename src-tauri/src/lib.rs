@@ -97,6 +97,7 @@ pub fn run() {
             commands::ai_check_tracks,
             commands::default_download_dir,
             commands::find_local_track,
+            commands::get_downloaded_track_ids,
             commands::remove_local_track,
             commands::import_local_track,
             commands::downloads_info,
