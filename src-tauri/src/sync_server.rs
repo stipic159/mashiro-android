@@ -258,14 +258,33 @@ const HTML_PAGE: &str = r#"<!DOCTYPE html>
 </body>
 </html>"#;
 
+const MAX_HEADER_SIZE: usize = 16 * 1024;
+const MAX_FILE_SIZE: usize = 200 * 1024 * 1024; // 200 MB
+
 async fn handle_client(mut stream: TcpStream, music_dir: PathBuf) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut buffer = [0u8; 4096];
-    let n = stream.read(&mut buffer).await?;
-    if n == 0 {
+    let mut header_buf = Vec::new();
+    let mut header_end = 0;
+    let mut temp = [0u8; 2048];
+
+    while header_buf.len() < MAX_HEADER_SIZE {
+        let n = stream.read(&mut temp).await?;
+        if n == 0 {
+            return Ok(());
+        }
+        header_buf.extend_from_slice(&temp[..n]);
+        if let Some(pos) = header_buf.windows(4).position(|w| w == b"\r\n\r\n") {
+            header_end = pos + 4;
+            break;
+        }
+    }
+
+    if header_end == 0 {
+        let resp = "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n";
+        stream.write_all(resp.as_bytes()).await?;
         return Ok(());
     }
 
-    let header_str = String::from_utf8_lossy(&buffer[..n]);
+    let header_str = String::from_utf8_lossy(&header_buf[..header_end]);
     let first_line = header_str.lines().next().unwrap_or("");
 
     if first_line.starts_with("GET / ") || first_line.starts_with("GET /index.html") {
@@ -306,28 +325,48 @@ async fn handle_client(mut stream: TcpStream, music_dir: PathBuf) -> Result<(), 
             .and_then(|v| v.trim().parse::<usize>().ok())
             .unwrap_or(0);
 
-        // Find boundary between headers and body
-        let header_end = header_str.find("\r\n\r\n").map(|idx| idx + 4).unwrap_or(n);
-        let mut body_bytes = buffer[header_end..n].to_vec();
+        if content_length > MAX_FILE_SIZE {
+            let resp = "HTTP/1.1 413 Payload Too Large\r\nConnection: close\r\n\r\n";
+            stream.write_all(resp.as_bytes()).await?;
+            return Ok(());
+        }
 
-        // Read remaining body bytes
-        while body_bytes.len() < content_length {
-            let mut chunk = [0u8; 8192];
-            let read_bytes = stream.read(&mut chunk).await?;
+        let initial_body = &header_buf[header_end..];
+        let file_path = music_dir.join(&filename);
+
+        let mut file = match tokio::fs::File::create(&file_path).await {
+            Ok(f) => f,
+            Err(e) => {
+                let json_body = format!(r#"{{"ok":false,"error":"{}"}}"#, e);
+                let response = format!(
+                    "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    json_body.len(),
+                    json_body
+                );
+                stream.write_all(response.as_bytes()).await?;
+                return Ok(());
+            }
+        };
+
+        let mut written = initial_body.len();
+        if !initial_body.is_empty() {
+            file.write_all(initial_body).await?;
+        }
+
+        let mut chunk = [0u8; 16384];
+        while written < content_length {
+            let to_read = (content_length - written).min(chunk.len());
+            let read_bytes = stream.read(&mut chunk[..to_read]).await?;
             if read_bytes == 0 {
                 break;
             }
-            body_bytes.extend_from_slice(&chunk[..read_bytes]);
+            file.write_all(&chunk[..read_bytes]).await?;
+            written += read_bytes;
         }
 
-        let file_path = music_dir.join(&filename);
-        let save_res = std::fs::write(&file_path, &body_bytes);
+        file.flush().await?;
 
-        let json_body = match save_res {
-            Ok(_) => format!(r#"{{"ok":true,"filename":"{}"}}"#, filename),
-            Err(e) => format!(r#"{{"ok":false,"error":"{}"}}"#, e),
-        };
-
+        let json_body = format!(r#"{{"ok":true,"filename":"{}"}}"#, filename);
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             json_body.len(),
