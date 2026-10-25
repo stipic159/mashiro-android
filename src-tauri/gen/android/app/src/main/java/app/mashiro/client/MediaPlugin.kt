@@ -59,6 +59,7 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity), MashiroMed
         this.mWebView = webView
     }
 
+    @Suppress("DEPRECATION")
     override fun onDestroy() {
         if (MashiroMediaService.listener === this) {
             MashiroMediaService.listener = null

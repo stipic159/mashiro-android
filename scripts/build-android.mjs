@@ -79,6 +79,19 @@ const env = {
 
 // If Windows user profile contains non-ASCII characters (Cyrillic),
 // LLVM ld.lld linker crashes when loading standard rlibs unless mapped to an ASCII drive.
+if (process.platform === "win32") {
+  try {
+    const sysroot = execSync("rustc --print sysroot", { encoding: "utf8" }).trim();
+    if (/[^\x00-\x7F]/.test(sysroot) && !fs.existsSync("R:\\lib\\rustlib")) {
+      try {
+        execSync(`subst R: "${sysroot}"`, { stdio: "ignore" });
+      } catch (err) {
+        console.warn("⚠️ Could not automatically map virtual drive R: ->", err.message);
+      }
+    }
+  } catch {}
+}
+
 if (fs.existsSync("R:\\lib\\rustlib")) {
   env.RUSTFLAGS = (env.RUSTFLAGS ? env.RUSTFLAGS + " " : "") + "--sysroot=R:";
   console.log("ℹ️ Non-ASCII path mitigation active: using RUSTFLAGS=--sysroot=R:\n");
