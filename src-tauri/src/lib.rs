@@ -43,6 +43,7 @@ pub fn run() {
         .manage(together::relay::RelayState::default())
         .invoke_handler(tauri::generate_handler![
             commands::media_play,
+            commands::media_prepare_next,
             commands::media_pause,
             commands::media_resume,
             commands::media_seek,
@@ -51,6 +52,7 @@ pub fn run() {
             commands::media_set_repeat,
             commands::media_set_fullscreen,
             commands::media_get_status,
+            commands::media_open_system_equalizer,
             commands::prefetch_stream,
             commands::clear_stream_cache,
             commands::auth_login,

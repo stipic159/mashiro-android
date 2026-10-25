@@ -13,11 +13,13 @@ export interface AudioDriverCallbacks {
   onEnded?: () => void;
   onMediaButtonAction?: (action: string) => void;
   onBackPressed?: () => void;
+  onTrackTransition?: (mediaId: string, reason: number) => void;
 }
 
 export interface AudioDriver {
   init(callbacks: AudioDriverCallbacks): Promise<void>;
   play(payload: PlayTrackPayload): Promise<void>;
+  prepareNext?(payload: PlayTrackPayload): Promise<void>;
   resume(): Promise<void>;
   pause(): Promise<void>;
   seek(positionSeconds: number): Promise<void>;

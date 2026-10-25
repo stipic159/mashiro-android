@@ -74,16 +74,35 @@ export const useSleepStore = defineStore("sleep", {
       if (this.firing) return;
       this.firing = true;
       const { usePlayerStore } = await import("@/stores/player/index");
+      const { getAudioDriver } = await import("@/stores/audio/index");
       const player = usePlayerStore();
+      const driver = getAudioDriver();
       this.cancel(true);
+
+      const initialVolume = player.muted ? 0 : player.volume;
       try {
-        await fadeOut(6000);
+        // Плавное затухание громкости в течение ~3 секунд
+        const steps = 15;
+        const intervalMs = 200;
+        for (let i = steps - 1; i >= 0; i--) {
+          const v = (initialVolume * i) / steps;
+          await driver.setVolume(v);
+          await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        }
+        await driver.pause();
+        audio.pause();
+        player.isPlaying = false;
+      } catch (err) {
+        console.warn("[sleep] fire error:", err);
+        await driver.pause();
         audio.pause();
         player.isPlaying = false;
       } finally {
+        // Восстанавливаем сохраненную громкость для последующего прослушивания
+        await driver.setVolume(initialVolume);
         cancelFade(player.muted ? 0 : player.volume);
         this.firing = false;
-        Notify.create({ message: "Спокойной ночи - музыка выключена" });
+        Notify.create({ message: "Спокойной ночи — музыка выключена" });
       }
     },
   },

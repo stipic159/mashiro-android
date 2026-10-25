@@ -202,6 +202,11 @@ export const usePlayerStore = defineStore("player", {
             this.fullscreen = false;
           }
         },
+        onTrackTransition: (mediaId, reason) => {
+          if (reason === 0) {
+            this.handleGaplessTransition(mediaId);
+          }
+        },
       });
 
       watch(
@@ -577,16 +582,31 @@ export const usePlayerStore = defineStore("player", {
           });
           return;
         }
-        const message =
-          e instanceof Error
-            ? e.message
-            : typeof e === "string"
-              ? e
-              : "Не удалось воспроизвести трек";
-        Notify.create({
-          type: "negative",
-          message,
-        });
+
+        const hasNext = this.isWave || (this.queue.length > 0 && this.index < this.queue.length - 1);
+        if (hasNext) {
+          Notify.create({
+            type: "warning",
+            message: `«${track.title}» недоступен, переключаем…`,
+            timeout: 2500,
+          });
+          window.setTimeout(() => {
+            if (isCurrentToken(token)) {
+              void this.next(true);
+            }
+          }, 600);
+        } else {
+          const message =
+            e instanceof Error
+              ? e.message
+              : typeof e === "string"
+                ? e
+                : "Не удалось воспроизвести трек";
+          Notify.create({
+            type: "negative",
+            message,
+          });
+        }
       } finally {
         this.loading = false;
       }
@@ -597,6 +617,35 @@ export const usePlayerStore = defineStore("player", {
       this.queue = res.queue;
       this.index = res.newIndex;
       this.sourceQueue = dedupeTracks(this.sourceQueue);
+    },
+
+    handleGaplessTransition(mediaId: string) {
+      log.info("[Gapless] Automatic track transition to:", mediaId);
+      const nextIdx = this.queue.findIndex(
+        (t, idx) => idx > this.index && t.id === mediaId,
+      );
+      if (nextIdx !== -1) {
+        this.index = nextIdx;
+      } else if (this.index < this.queue.length - 1) {
+        this.index += 1;
+      }
+      this.current = this.queue[this.index] ?? null;
+      this.progress = 0;
+      this.isPlaying = true;
+      this.persistSession();
+
+      if (this.isWave && this.current) {
+        void api.sendFeedback({
+          type: "trackStarted",
+          track_id: this.current.id,
+          batch_id: this.waveBatchId,
+          station_id: this.stationId ?? undefined,
+        });
+      }
+      if (this.showLyrics) void this.loadLyrics();
+
+      // Immediately queue the subsequent track for seamless transition
+      void this.prefetchNext();
     },
 
     async prefetchNext() {
@@ -667,8 +716,18 @@ export const usePlayerStore = defineStore("player", {
       if (ui.gaplessEnabled) {
         const upcoming = this.queue[this.index + 1];
         const entry = upcoming ? prefetched.get(upcoming.id) : undefined;
-        if (entry && !entry.local) warmNext(entry.url);
-        else clearWarm();
+        if (entry && upcoming) {
+          const streamUrl = isNativeAudio ? (entry.rawUrl || entry.url) : entry.url;
+          const driver = getAudioDriver();
+          void driver.prepareNext?.({
+            track: upcoming,
+            streamUrl,
+            fallbackUrl: entry.url,
+          });
+          if (!entry.local) warmNext(entry.url);
+        } else {
+          clearWarm();
+        }
       } else {
         clearWarm();
       }
@@ -868,6 +927,20 @@ export const usePlayerStore = defineStore("player", {
         void driver.resume();
         this.isPlaying = true;
       }
+    },
+
+    pause() {
+      if (!this.isPlaying) return;
+      this.isPlaying = false;
+      const driver = getAudioDriver();
+      void driver.pause();
+    },
+
+    resume() {
+      if (this.isPlaying) return;
+      this.isPlaying = true;
+      const driver = getAudioDriver();
+      void driver.resume();
     },
 
     async next(auto = false) {

@@ -19,6 +19,7 @@ export interface NativeAudioCallbacks {
   onEnded?: () => void;
   onMediaButtonAction?: (action: string) => void;
   onBackPressed?: () => void;
+  onTrackTransition?: (mediaId: string, reason: number) => void;
 }
 
 let unlistens: Array<() => void> = [];
@@ -124,6 +125,15 @@ export async function initNativeAudio(callbacks: NativeAudioCallbacks): Promise<
     };
     window.addEventListener("android-back-pressed", onDomBack);
     unlistens.push(() => window.removeEventListener("android-back-pressed", onDomBack));
+
+    const onDomTransition = (e: Event) => {
+      const detail = (e as CustomEvent<{ mediaId: string; reason: number }>).detail;
+      if (detail?.mediaId) {
+        callbacks.onTrackTransition?.(detail.mediaId, detail.reason);
+      }
+    };
+    window.addEventListener("media-transition", onDomTransition);
+    unlistens.push(() => window.removeEventListener("media-transition", onDomTransition));
   } catch (e) {
     console.warn("[nativeAudio] failed to bind event listeners:", e);
   }
@@ -154,6 +164,21 @@ export async function nativePlay(payload: NativePlayPayload): Promise<void> {
     },
   });
   currentIsPlaying = true;
+}
+
+export async function nativePrepareNext(payload: NativePlayPayload): Promise<void> {
+  if (!isNativeAudio) return;
+  await invoke("media_prepare_next", {
+    payload: {
+      id: payload.id,
+      title: payload.title,
+      artist: payload.artist,
+      album: payload.album ?? null,
+      coverUrl: payload.coverUrl ?? null,
+      streamUrl: payload.streamUrl,
+      startPositionMs: 0,
+    },
+  });
 }
 
 export async function nativePause(): Promise<void> {
@@ -198,4 +223,9 @@ export async function nativeSetRepeat(mode: string): Promise<void> {
 export async function nativeSetFullscreen(open: boolean): Promise<void> {
   if (!isNativeAudio) return;
   await invoke("media_set_fullscreen", { open });
+}
+
+export async function nativeOpenSystemEqualizer(): Promise<void> {
+  if (!isNativeAudio) return;
+  await invoke("media_open_system_equalizer");
 }

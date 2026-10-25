@@ -1,7 +1,7 @@
 {
   "name": "mashiro-android",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.5.0",
   "description": "Mashiro - клиент Яндекс Музыки для Android",
   "type": "module",
   "scripts": {
@@ -13,6 +13,9 @@
     "android:build": "node scripts/build-android.mjs",
     "android:build:debug": "node scripts/build-android.mjs --debug",
     "android:build:release": "node scripts/build-android.mjs --release",
+    "android:build:arm": "node scripts/build-android.mjs --release --target=arm",
+    "android:build:x86_64": "node scripts/build-android.mjs --debug --target=x86_64",
+    "android:build:universal": "node scripts/build-android.mjs --release --target=universal",
     "android:install:debug": "adb install -r src-tauri/gen/android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk",
     "android:install:release": "adb install -r src-tauri/gen/android/app/build/outputs/apk/arm64/release/app-arm64-release.apk",
     "android:logcat": "adb logcat -s Mashiro:* MediaSession:* AndroidRuntime:*"

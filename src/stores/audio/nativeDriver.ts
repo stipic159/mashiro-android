@@ -5,6 +5,7 @@ import {
   initNativeAudio,
   nativePause,
   nativePlay,
+  nativePrepareNext,
   nativeResume,
   nativeSeek,
   nativeSetFullscreen,
@@ -41,6 +42,7 @@ export class NativeAudioDriver implements AudioDriver {
       },
       onMediaButtonAction: callbacks.onMediaButtonAction,
       onBackPressed: callbacks.onBackPressed,
+      onTrackTransition: callbacks.onTrackTransition,
     });
 
     // 2. Setup HTML5 audio listeners for fallback mode
@@ -105,6 +107,23 @@ export class NativeAudioDriver implements AudioDriver {
       }
       useEqualizerStore().apply();
       await safePlay();
+    }
+  }
+
+  async prepareNext(payload: PlayTrackPayload): Promise<void> {
+    if (this.usingHtmlFallback) return;
+    const { track, streamUrl } = payload;
+    try {
+      await nativePrepareNext({
+        id: track.id,
+        title: track.title,
+        artist: artistNames(track.artists),
+        album: track.album_title || null,
+        coverUrl: track.cover_url || null,
+        streamUrl,
+      });
+    } catch (e) {
+      console.warn("[NativeAudioDriver] prepareNext failed:", e);
     }
   }
 

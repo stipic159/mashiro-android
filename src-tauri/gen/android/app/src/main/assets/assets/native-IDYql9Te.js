@@ -1,1 +1,0 @@
-import{W as e}from"./index-BLWrNWpU.js";function t(e){let t=e;return!t||!t.closest?!1:!!t.closest(`input, textarea, [contenteditable='true']`)}var n=e(()=>{document.addEventListener(`contextmenu`,e=>{t(e.target)||e.preventDefault()},{capture:!0}),document.addEventListener(`dragstart`,e=>{let t=e.target;t&&t.tagName===`IMG`&&e.preventDefault()})});export{n as default};

@@ -56,11 +56,27 @@ pub fn read_text_file(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn open_external(url: String) -> Result<(), String> {
+pub fn open_external(app: tauri::AppHandle, url: String) -> Result<(), String> {
     let target = url.trim();
     if !target.starts_with("http://") && !target.starts_with("https://") {
         return Err("unsupported url".to_string());
     }
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        if let Some(plugin) = app.try_state::<crate::MediaPluginHandle<tauri::Wry>>() {
+            #[derive(serde::Serialize)]
+            struct OpenUrlPayload<'a> {
+                url: &'a str,
+            }
+            return plugin
+                .0
+                .run_mobile_plugin("openUrl", OpenUrlPayload { url: target })
+                .map_err(|e| e.to_string());
+        }
+    }
+    #[allow(unused_variables)]
+    let _ = app;
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("rundll32.exe")
@@ -75,7 +91,7 @@ pub fn open_external(url: String) -> Result<(), String> {
             .spawn()
             .map_err(|e| e.to_string())?;
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
     {
         std::process::Command::new("xdg-open")
             .arg(target)

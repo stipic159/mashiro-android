@@ -7,8 +7,8 @@ const CLIENT_ID: &str = "23cabbbdc6cd418abb4b39c32c41195d";
 const CLIENT_SECRET: &str = "53bc75238f0c4d08a118e51fe9203300";
 const DEVICE_CODE_URL: &str = "https://oauth.yandex.ru/device/code";
 const TOKEN_URL: &str = "https://oauth.yandex.ru/token";
-const DEVICE_ID: &str = "mashiro-desktop-client";
-const DEVICE_NAME: &str = "Mashiro Desktop";
+const DEVICE_ID: &str = "mashiro-android-client";
+const DEVICE_NAME: &str = "Mashiro Android";
 
 static GENERATION: AtomicU64 = AtomicU64::new(0);
 
@@ -36,14 +36,30 @@ struct TokenResp {
     error_description: Option<String>,
 }
 
-fn open_in_browser(url: &str) {
+fn open_in_browser(app: &AppHandle, url: &str) {
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        if let Some(plugin) = app.try_state::<crate::MediaPluginHandle<tauri::Wry>>() {
+            #[derive(serde::Serialize)]
+            struct OpenUrlPayload<'a> {
+                url: &'a str,
+            }
+            let _ = plugin
+                .0
+                .run_mobile_plugin::<()>("openUrl", OpenUrlPayload { url });
+            return;
+        }
+    }
+    #[allow(unused_variables)]
+    let _ = app;
     #[cfg(target_os = "windows")]
     let _ = std::process::Command::new("cmd")
         .args(["/C", "start", "", url])
         .spawn();
     #[cfg(target_os = "macos")]
     let _ = std::process::Command::new("open").arg(url).spawn();
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
@@ -78,7 +94,7 @@ pub async fn oauth_device_start(app: AppHandle) -> Result<DeviceInfo, String> {
     let poll_interval = data.interval.unwrap_or(5).max(1);
     let expires_in = data.expires_in.unwrap_or(300);
 
-    open_in_browser(&verification_url);
+    open_in_browser(&app, &verification_url);
 
     let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     let info = DeviceInfo {

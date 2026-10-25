@@ -2,9 +2,11 @@ package app.mashiro.client
 
 import android.app.Activity
 import android.content.Intent
+import android.media.audiofx.AudioEffect
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.media3.common.C
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -116,6 +118,14 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity), MashiroMed
         emitEvent("media-action", data)
     }
 
+    override fun onMediaItemTransition(mediaId: String, reason: Int) {
+        val data = JSObject().apply {
+            put("mediaId", mediaId)
+            put("reason", reason)
+        }
+        emitEvent("media-transition", data)
+    }
+
     private fun ensureServiceRunning() {
         if (MashiroMediaService.instance == null) {
             val intent = Intent(activity, MashiroMediaService::class.java)
@@ -174,6 +184,53 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity), MashiroMed
             streamUrl = streamUrl,
             startPositionMs = startPositionMs
         )
+        invoke.resolve()
+    }
+
+    @Command
+    fun prepareNext(invoke: Invoke) {
+        val raw = try { invoke.getRawArgs() } catch (_: Exception) { "{}" }
+        var id = ""
+        var title = ""
+        var artist = ""
+        var album: String? = null
+        var coverUrl: String? = null
+        var streamUrl = ""
+        var ok = false
+
+        try {
+            val payload = invoke.parseArgs(PlayPayload::class.java)
+            id = payload.id
+            title = payload.title
+            artist = payload.artist
+            album = payload.album
+            coverUrl = payload.coverUrl
+            streamUrl = payload.streamUrl
+            ok = true
+        } catch (_: Exception) {}
+
+        if (!ok) {
+            try {
+                val json = JSONObject(raw)
+                id = json.optString("id", "")
+                title = json.optString("title", "")
+                artist = json.optString("artist", "")
+                album = if (json.has("album")) json.optString("album", null) else null
+                coverUrl = if (json.has("coverUrl")) json.optString("coverUrl", null) else null
+                streamUrl = json.optString("streamUrl", "")
+            } catch (_: Exception) {}
+        }
+
+        if (id.isNotEmpty() && streamUrl.isNotEmpty()) {
+            MashiroMediaService.prepareNext(
+                id = id,
+                title = title,
+                artist = artist,
+                album = album,
+                coverUrl = coverUrl,
+                streamUrl = streamUrl
+            )
+        }
         invoke.resolve()
     }
 
@@ -306,6 +363,74 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity), MashiroMed
             put("durationMs", MashiroMediaService.getDuration())
         }
         invoke.resolve(data)
+    }
+
+    @Command
+    fun openUrl(invoke: Invoke) {
+        val raw = try { invoke.getRawArgs() } catch (_: Exception) { "{}" }
+        val url = try {
+            JSONObject(raw).optString("url", "")
+        } catch (_: Exception) { "" }
+        if (url.isNotEmpty()) {
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                activity.startActivity(intent)
+                invoke.resolve()
+                return
+            } catch (e: Exception) {
+                Log.e("MediaPlugin", "Failed to openUrl: $url", e)
+                invoke.reject(e.message ?: "Failed to open url")
+                return
+            }
+        }
+        invoke.reject("Empty url")
+    }
+
+    @Command
+    fun openSystemEqualizer(invoke: Invoke) {
+        val audioSessionId = MashiroMediaService.getAudioSessionId()
+        try {
+            val intent = Intent(AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL).apply {
+                if (audioSessionId != C.AUDIO_SESSION_ID_UNSET) {
+                    putExtra(AudioEffect.EXTRA_AUDIO_SESSION, audioSessionId)
+                }
+                putExtra(AudioEffect.EXTRA_PACKAGE_NAME, activity.packageName)
+                putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            if (intent.resolveActivity(activity.packageManager) != null) {
+                activity.startActivity(intent)
+                invoke.resolve()
+            } else {
+                // If direct control panel intent is not found, launch generic sound settings
+                val fallbackIntent = Intent(android.provider.Settings.ACTION_SOUND_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                activity.startActivity(fallbackIntent)
+                invoke.resolve()
+            }
+        } catch (e: Exception) {
+            Log.e("MediaPlugin", "openSystemEqualizer failed", e)
+            invoke.reject(e.message ?: "Failed to open equalizer")
+        }
+    }
+
+    @Command
+    fun getCacheSize(invoke: Invoke) {
+        val bytes = MashiroMediaService.getAudioCacheSizeBytes()
+        val data = JSObject().apply {
+            put("bytes", bytes)
+            put("mb", bytes / (1024 * 1024))
+        }
+        invoke.resolve(data)
+    }
+
+    @Command
+    fun clearCache(invoke: Invoke) {
+        MashiroMediaService.clearAudioCache(activity)
+        invoke.resolve()
     }
 
     companion object {

@@ -38,6 +38,7 @@
         @update:model-value="ui.set('animations', $event)"
       />
       <SettingToggle
+        v-if="!isMobile"
         :model-value="ui.settings.thinScrollbar"
         label="Тонкие полосы прокрутки"
         description="Узкие скроллбары во всех списках вместо системных широких."
@@ -45,7 +46,7 @@
       />
     </div>
 
-    <div class="settings-subgroup">
+    <div v-if="!isMobile" class="settings-subgroup">
       <div class="settings-subgroup-head">
         <h3>Обложки и миниатюры</h3>
         <p>Показывать ли картинки в боковой панели и в плеере.</p>
@@ -67,8 +68,14 @@
 
     <div class="settings-subgroup">
       <div class="settings-subgroup-head">
-        <h3>Окно и запуск</h3>
-        <p>Что происходит при закрытии окна и при следующем запуске.</p>
+        <h3>{{ isMobile ? "Запуск приложения" : "Окно и запуск" }}</h3>
+        <p>
+          {{
+            isMobile
+              ? "Что происходит при запуске приложения."
+              : "Что происходит при закрытии окна и при следующем запуске."
+          }}
+        </p>
       </div>
 
       <SettingToggle
@@ -195,10 +202,12 @@
 import { computed } from "vue";
 import SettingSlider from "@/components/settings/SettingSlider.vue";
 import SettingToggle from "@/components/settings/SettingToggle.vue";
+import { useMobile } from "@/composables/useMobile";
 import type { AiTrackAction } from "@/stores/ui/defaults";
 import { useUiStore } from "@/stores/ui/index";
 
 const ui = useUiStore();
+const { isMobile } = useMobile();
 
 const aiActions: Array<{ value: AiTrackAction; label: string }> = [
   { value: "none", label: "Ничего не делать" },

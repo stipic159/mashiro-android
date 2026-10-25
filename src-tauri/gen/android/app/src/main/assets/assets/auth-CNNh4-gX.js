@@ -1,1 +1,0 @@
-import{V as e,W as t}from"./index-BLWrNWpU.js";import{t as n}from"./auth--CJDDrgK.js";var r=t(async({store:t})=>{let r=n(t);r.restore(),e()&&await r.fetchProfile()});export{r as default};

@@ -6,7 +6,7 @@
     </div>
 
     <SettingSlider
-      v-for="item in sliders"
+      v-for="item in visibleSliders"
       :key="item.key"
       :label="item.label"
       :description="item.description"
@@ -54,11 +54,14 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import SettingSlider from "@/components/settings/SettingSlider.vue";
+import { useMobile } from "@/composables/useMobile";
 import type { CoverStyle, Density } from "@/stores/ui/index";
 import { useUiStore } from "@/stores/ui/index";
 
 const ui = useUiStore();
+const { isMobile } = useMobile();
 
 type SliderKey =
   | "textScale"
@@ -132,6 +135,14 @@ const sliders: Array<{
     suffix: " px",
   },
 ];
+
+const visibleSliders = computed(() =>
+  sliders.filter(
+    (item) =>
+      !isMobile.value ||
+      (item.key !== "sidebarWidth" && item.key !== "searchWidth"),
+  ),
+);
 
 const densities: Array<{ value: Density; label: string }> = [
   { value: "compact", label: "Плотно" },

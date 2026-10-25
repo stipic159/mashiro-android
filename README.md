@@ -58,15 +58,24 @@ rustup target add aarch64-linux-android
 
 2. **Сборка APK:**
    ```bash
-   # Релизная сборка
+   # Стандартная сборка под 64-битный ARM (большинство телефонов)
    npm run android:build:release
+
+   # Универсальный APK со всеми архитектурами (arm64, armv7, x86_64)
+   npm run android:build:universal
+
+   # Сборка под 32-битный ARM (старые смартфоны)
+   npm run android:build:arm
+
+   # Сборка под x86_64 (эмуляторы Android Studio, ChromeOS)
+   npm run android:build:x86_64
 
    # Или отладочная сборка
    npm run android:build:debug
    ```
 
    Собранный файл появится по пути:
-   `src-tauri/gen/android/app/build/outputs/apk/arm64/release/app-arm64-release.apk`
+   `src-tauri/gen/android/app/build/outputs/apk/<arch>/release/app-<arch>-release.apk`
 
 3. **Установка на устройство через ADB:**
    ```bash

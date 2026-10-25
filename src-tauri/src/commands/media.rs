@@ -59,6 +59,24 @@ pub async fn media_play<R: Runtime>(
 }
 
 #[tauri::command]
+pub async fn media_prepare_next<R: Runtime>(
+    app: AppHandle<R>,
+    payload: NativePlayPayload,
+) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        if let Some(plugin) = app.try_state::<crate::MediaPluginHandle<R>>() {
+            return plugin
+                .0
+                .run_mobile_plugin("prepareNext", payload)
+                .map_err(|e| e.to_string());
+        }
+    }
+    let _ = (app, payload);
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn media_pause<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
@@ -197,4 +215,19 @@ pub async fn media_get_status<R: Runtime>(
         "positionMs": 0,
         "durationMs": 0
     }))
+}
+
+#[tauri::command]
+pub async fn media_open_system_equalizer<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        if let Some(plugin) = app.try_state::<crate::MediaPluginHandle<R>>() {
+            return plugin
+                .0
+                .run_mobile_plugin("openSystemEqualizer", ())
+                .map_err(|e| e.to_string());
+        }
+    }
+    let _ = app;
+    Ok(())
 }
