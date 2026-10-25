@@ -1,6 +1,5 @@
 import { Platform } from "quasar";
-import { addPluginListener, invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 
 export const isNativeAudio = Boolean(Platform.is.android || Platform.is.mobile);
 
@@ -25,6 +24,7 @@ export interface NativeAudioCallbacks {
 let unlistens: Array<() => void> = [];
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let currentIsPlaying = false;
+let lastEndedTime = 0;
 
 function startPolling(callbacks: NativeAudioCallbacks): void {
   stopPolling();
@@ -76,7 +76,16 @@ export async function initNativeAudio(callbacks: NativeAudioCallbacks): Promise<
   };
 
   try {
-    // 1. Direct DOM CustomEvents from Kotlin WebView evaluateJavascript (most reliable)
+    const safeOnEnded = () => {
+      const now = Date.now();
+      if (now - lastEndedTime < 1000) return;
+      lastEndedTime = now;
+      currentIsPlaying = false;
+      stopPolling();
+      callbacks.onEnded?.();
+    };
+
+    // 1. Direct DOM CustomEvents from Kotlin WebView evaluateJavascript (primary & lowest latency)
     const onDomProgress = (e: Event) => {
       const detail = (e as CustomEvent<{ positionMs: number; durationMs: number }>).detail;
       if (detail && typeof detail.positionMs === "number") {
@@ -96,9 +105,7 @@ export async function initNativeAudio(callbacks: NativeAudioCallbacks): Promise<
     unlistens.push(() => window.removeEventListener("media-playback-state", onDomState));
 
     const onDomEnded = () => {
-      currentIsPlaying = false;
-      stopPolling();
-      callbacks.onEnded?.();
+      safeOnEnded();
     };
     window.addEventListener("media-ended", onDomEnded);
     unlistens.push(() => window.removeEventListener("media-ended", onDomEnded));
@@ -117,68 +124,6 @@ export async function initNativeAudio(callbacks: NativeAudioCallbacks): Promise<
     };
     window.addEventListener("android-back-pressed", onDomBack);
     unlistens.push(() => window.removeEventListener("android-back-pressed", onDomBack));
-
-    // 2. Tauri event.listen fallback
-    const unlistenState = await listen<{ isPlaying: boolean; state: string }>(
-      "media-playback-state",
-      (event) => {
-        handlePlaybackState(event.payload.isPlaying, event.payload.state);
-      }
-    ).catch(() => null);
-    if (unlistenState) unlistens.push(unlistenState);
-
-    const unlistenProgress = await listen<{ positionMs: number; durationMs: number }>(
-      "media-progress",
-      (event) => {
-        callbacks.onProgress?.(event.payload.positionMs, event.payload.durationMs);
-      }
-    ).catch(() => null);
-    if (unlistenProgress) unlistens.push(unlistenProgress);
-
-    const unlistenEnded = await listen("media-ended", () => {
-      currentIsPlaying = false;
-      stopPolling();
-      callbacks.onEnded?.();
-    }).catch(() => null);
-    if (unlistenEnded) unlistens.push(unlistenEnded);
-
-    const unlistenAction = await listen<{ action: string }>(
-      "media-action",
-      (event) => {
-        callbacks.onMediaButtonAction?.(event.payload.action);
-      }
-    ).catch(() => null);
-    if (unlistenAction) unlistens.push(unlistenAction);
-
-    // 3. Android Tauri 2 plugin listeners fallback (addPluginListener)
-    const subState = await addPluginListener<{ isPlaying: boolean; state: string }>(
-      "media",
-      "media-playback-state",
-      (payload) => {
-        handlePlaybackState(payload.isPlaying, payload.state);
-      }
-    ).catch(() => null);
-    if (subState) unlistens.push(() => subState.unregister());
-
-    const subProgress = await addPluginListener<{ positionMs: number; durationMs: number }>(
-      "media",
-      "media-progress",
-      (payload) => {
-        callbacks.onProgress?.(payload.positionMs, payload.durationMs);
-      }
-    ).catch(() => null);
-    if (subProgress) unlistens.push(() => subProgress.unregister());
-
-    const subEnded = await addPluginListener(
-      "media",
-      "media-ended",
-      () => {
-        currentIsPlaying = false;
-        stopPolling();
-        callbacks.onEnded?.();
-      }
-    ).catch(() => null);
-    if (subEnded) unlistens.push(() => subEnded.unregister());
   } catch (e) {
     console.warn("[nativeAudio] failed to bind event listeners:", e);
   }

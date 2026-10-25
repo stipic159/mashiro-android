@@ -89,13 +89,19 @@ export class NativeAudioDriver implements AudioDriver {
       this.usingHtmlFallback = true;
       audio.src = fallbackUrl || streamUrl;
       if (startPositionSeconds && startPositionSeconds > 0) {
-        const seekOnce = () => {
-          audio.removeEventListener("loadedmetadata", seekOnce);
+        if (audio.readyState >= 1) {
           try {
             audio.currentTime = startPositionSeconds;
           } catch {}
-        };
-        audio.addEventListener("loadedmetadata", seekOnce);
+        } else {
+          const seekOnce = () => {
+            audio.removeEventListener("loadedmetadata", seekOnce);
+            try {
+              audio.currentTime = startPositionSeconds;
+            } catch {}
+          };
+          audio.addEventListener("loadedmetadata", seekOnce);
+        }
       }
       useEqualizerStore().apply();
       await safePlay();
@@ -161,6 +167,10 @@ export class NativeAudioDriver implements AudioDriver {
   dispose(): void {
     disposeNativeAudio();
     cancelFade(0);
+    audio.onplay = null;
+    audio.onpause = null;
+    audio.onended = null;
+    audio.ontimeupdate = null;
     audio.pause();
     audio.src = "";
     this.usingHtmlFallback = false;
