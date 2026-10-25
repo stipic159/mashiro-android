@@ -279,7 +279,7 @@ async fn handle_client(mut stream: TcpStream, music_dir: PathBuf) -> Result<(), 
     }
 
     if first_line.starts_with("POST /upload") {
-        let filename = header_str
+        let raw_filename = header_str
             .lines()
             .next()
             .and_then(|line| line.split_whitespace().nth(1))
@@ -296,6 +296,8 @@ async fn handle_client(mut stream: TcpStream, music_dir: PathBuf) -> Result<(), 
             })
             .and_then(|enc| urlencoding_decode(enc).ok())
             .unwrap_or_else(|| "track.mp3".to_string());
+
+        let filename = sanitize_filename(&raw_filename);
 
         let content_length = header_str
             .lines()
@@ -340,9 +342,34 @@ async fn handle_client(mut stream: TcpStream, music_dir: PathBuf) -> Result<(), 
     Ok(())
 }
 
+fn sanitize_filename(raw: &str) -> String {
+    let path = std::path::Path::new(raw);
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("track.mp3");
+
+    let clean = name
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0' => '_',
+            other => other,
+        })
+        .collect::<String>()
+        .trim()
+        .to_string();
+
+    if clean.is_empty() || clean.starts_with('.') {
+        format!("track_{clean}.mp3")
+    } else {
+        clean
+    }
+}
+
 fn urlencoding_decode(input: &str) -> Result<String, ()> {
-    let mut bytes = Vec::new();
+    let mut bytes = Vec::with_capacity(input.len());
     let mut chars = input.chars();
+    let mut buf = [0u8; 4];
     while let Some(ch) = chars.next() {
         if ch == '%' {
             let h1 = chars.next().ok_or(())?.to_digit(16).ok_or(())?;
@@ -351,7 +378,8 @@ fn urlencoding_decode(input: &str) -> Result<String, ()> {
         } else if ch == '+' {
             bytes.push(b' ');
         } else {
-            bytes.push(ch as u8);
+            let s = ch.encode_utf8(&mut buf);
+            bytes.extend_from_slice(s.as_bytes());
         }
     }
     String::from_utf8(bytes).map_err(|_| ())
