@@ -101,8 +101,7 @@ impl Yandex {
         Ok((text, writers))
     }
 
-    async fn lyrics_external(&self, track_id: &str) -> Result<(String, Vec<String>), String> {
-        let track = self.track(track_id).await?;
+    async fn lyrics_external(&self, track: &TrackDto) -> Result<(String, Vec<String>), String> {
         let artist = track
             .artists
             .first()
@@ -177,8 +176,7 @@ impl Yandex {
         resp.json::<serde_json::Value>().await.ok()
     }
 
-    async fn lyrics_lrclib(&self, track_id: &str) -> Result<(String, Vec<String>), String> {
-        let track = self.track(track_id).await?;
+    async fn lyrics_lrclib(&self, track: &TrackDto) -> Result<(String, Vec<String>), String> {
         let artist = track
             .artists
             .first()
@@ -282,8 +280,7 @@ impl Yandex {
         }
     }
 
-    async fn lyrics_textyl(&self, track_id: &str) -> Result<(String, Vec<String>), String> {
-        let track = self.track(track_id).await?;
+    async fn lyrics_textyl(&self, track: &TrackDto) -> Result<(String, Vec<String>), String> {
         let artist = track
             .artists
             .first()
@@ -331,8 +328,7 @@ impl Yandex {
         Ok((text, Vec::new()))
     }
 
-    async fn lyrics_ovh(&self, track_id: &str) -> Result<(String, Vec<String>), String> {
-        let track = self.track(track_id).await?;
+    async fn lyrics_ovh(&self, track: &TrackDto) -> Result<(String, Vec<String>), String> {
         let artist = track
             .artists
             .first()
@@ -379,32 +375,39 @@ impl Yandex {
         let result = match self.lyrics_meta(track_id, ts, &sign, "LRC").await {
             Ok(value) => value,
             Err(_) => {
+                let track_dto = self.track(track_id).await.ok();
                 let mut plain_fallback: Option<LyricsDto> = None;
 
-                if let Ok((text, writers)) = self.lyrics_lrclib(track_id).await {
-                    if let Ok(lyrics) = lyrics_from_text(track_id, &text, writers) {
-                        if lyrics.synced {
-                            return Ok(lyrics);
+                if let Some(ref track) = track_dto {
+                    if let Ok((text, writers)) = self.lyrics_lrclib(track).await {
+                        if let Ok(lyrics) = lyrics_from_text(track_id, &text, writers) {
+                            if lyrics.synced {
+                                return Ok(lyrics);
+                            }
+                            plain_fallback = Some(lyrics);
                         }
-                        plain_fallback = Some(lyrics);
                     }
-                }
 
-                if let Ok((text, writers)) = self.lyrics_external(track_id).await {
-                    let lyrics = lyrics_from_text(track_id, &text, writers)?;
-                    if lyrics.synced {
-                        return Ok(lyrics);
+                    if let Ok((text, writers)) = self.lyrics_external(track).await {
+                        if let Ok(lyrics) = lyrics_from_text(track_id, &text, writers) {
+                            if lyrics.synced {
+                                return Ok(lyrics);
+                            }
+                            if plain_fallback.is_none() {
+                                plain_fallback = Some(lyrics);
+                            }
+                        }
                     }
-                    plain_fallback = Some(lyrics);
-                }
 
-                if let Ok((text, writers)) = self.lyrics_textyl(track_id).await {
-                    let lyrics = lyrics_from_text(track_id, &text, writers)?;
-                    if lyrics.synced {
-                        return Ok(lyrics);
-                    }
-                    if plain_fallback.is_none() {
-                        plain_fallback = Some(lyrics);
+                    if let Ok((text, writers)) = self.lyrics_textyl(track).await {
+                        if let Ok(lyrics) = lyrics_from_text(track_id, &text, writers) {
+                            if lyrics.synced {
+                                return Ok(lyrics);
+                            }
+                            if plain_fallback.is_none() {
+                                plain_fallback = Some(lyrics);
+                            }
+                        }
                     }
                 }
 
@@ -417,8 +420,12 @@ impl Yandex {
                         if let Some(lyrics) = plain_fallback {
                             return Ok(lyrics);
                         }
-                        let (text, writers) = self.lyrics_ovh(track_id).await?;
-                        return lyrics_from_text(track_id, &text, writers);
+                        if let Some(ref track) = track_dto {
+                            if let Ok((text, writers)) = self.lyrics_ovh(track).await {
+                                return lyrics_from_text(track_id, &text, writers);
+                            }
+                        }
+                        return Err("Для этого трека текста нет".to_string());
                     }
                 }
             }
