@@ -32,7 +32,13 @@ class MashiroMediaService : MediaSessionService() {
         var instance: MashiroMediaService? = null
             private set
 
-        var listener: MediaEventListener? = null
+        private var listenerRef: java.lang.ref.WeakReference<MediaEventListener>? = null
+
+        var listener: MediaEventListener?
+            get() = listenerRef?.get()
+            set(value) {
+                listenerRef = if (value != null) java.lang.ref.WeakReference(value) else null
+            }
 
         @Volatile var cachedIsPlaying: Boolean = false
         @Volatile var cachedPositionMs: Long = 0L
@@ -134,20 +140,11 @@ class MashiroMediaService : MediaSessionService() {
             }
         }
 
-        fun isPlaying(): Boolean {
-            val srv = instance ?: return cachedIsPlaying
-            return if (srv::exoPlayer.isInitialized) srv.exoPlayer.isPlaying else cachedIsPlaying
-        }
+        fun isPlaying(): Boolean = cachedIsPlaying
 
-        fun getCurrentPosition(): Long {
-            val srv = instance ?: return cachedPositionMs
-            return if (srv::exoPlayer.isInitialized) srv.exoPlayer.currentPosition else cachedPositionMs
-        }
+        fun getCurrentPosition(): Long = cachedPositionMs
 
-        fun getDuration(): Long {
-            val srv = instance ?: return cachedDurationMs
-            return if (srv::exoPlayer.isInitialized && srv.exoPlayer.duration > 0) srv.exoPlayer.duration else cachedDurationMs
-        }
+        fun getDuration(): Long = cachedDurationMs
     }
 
     override fun onCreate() {

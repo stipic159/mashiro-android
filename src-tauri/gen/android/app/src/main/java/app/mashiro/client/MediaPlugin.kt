@@ -50,7 +50,7 @@ class FullscreenPayload {
 }
 
 @TauriPlugin
-class MediaPlugin(private val activity: Activity) : Plugin(activity) {
+class MediaPlugin(private val activity: Activity) : Plugin(activity), MashiroMediaService.Companion.MediaEventListener {
 
     private var mWebView: android.webkit.WebView? = null
 
@@ -59,10 +59,23 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity) {
         this.mWebView = webView
     }
 
+    override fun onDestroy() {
+        if (MashiroMediaService.listener === this) {
+            MashiroMediaService.listener = null
+        }
+        if (instance === this) {
+            instance = null
+        }
+        mWebView = null
+        super.onDestroy()
+    }
+
     fun emitEvent(eventName: String, data: JSObject) {
+        if (activity.isFinishing || activity.isDestroyed) return
         trigger(eventName, data)
         val json = data.toString()
         activity.runOnUiThread {
+            if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
             mWebView?.evaluateJavascript(
                 "(function() { window.dispatchEvent(new CustomEvent('$eventName', { detail: $json })); })();",
                 null
@@ -72,34 +85,34 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity) {
 
     init {
         instance = this
-        MashiroMediaService.listener = object : MashiroMediaService.Companion.MediaEventListener {
-            override fun onPlaybackStateChanged(isPlaying: Boolean, state: String) {
-                val data = JSObject().apply {
-                    put("isPlaying", isPlaying)
-                    put("state", state)
-                }
-                emitEvent("media-playback-state", data)
-            }
+        MashiroMediaService.listener = this
+    }
 
-            override fun onProgress(positionMs: Long, durationMs: Long) {
-                val data = JSObject().apply {
-                    put("positionMs", positionMs)
-                    put("durationMs", durationMs)
-                }
-                emitEvent("media-progress", data)
-            }
-
-            override fun onTrackEnded() {
-                emitEvent("media-ended", JSObject())
-            }
-
-            override fun onMediaButtonAction(action: String) {
-                val data = JSObject().apply {
-                    put("action", action)
-                }
-                emitEvent("media-action", data)
-            }
+    override fun onPlaybackStateChanged(isPlaying: Boolean, state: String) {
+        val data = JSObject().apply {
+            put("isPlaying", isPlaying)
+            put("state", state)
         }
+        emitEvent("media-playback-state", data)
+    }
+
+    override fun onProgress(positionMs: Long, durationMs: Long) {
+        val data = JSObject().apply {
+            put("positionMs", positionMs)
+            put("durationMs", durationMs)
+        }
+        emitEvent("media-progress", data)
+    }
+
+    override fun onTrackEnded() {
+        emitEvent("media-ended", JSObject())
+    }
+
+    override fun onMediaButtonAction(action: String) {
+        val data = JSObject().apply {
+            put("action", action)
+        }
+        emitEvent("media-action", data)
     }
 
     private fun ensureServiceRunning() {
