@@ -42,27 +42,24 @@ fn safe_name(name: &str) -> String {
         .to_string()
 }
 
-#[tauri::command]
-pub fn default_download_dir(app: AppHandle) -> Result<String, String> {
-    let dir = app
-        .path()
+fn base_audio_dir(app: &AppHandle) -> std::path::PathBuf {
+    app.path()
         .audio_dir()
         .or_else(|_| app.path().download_dir())
-        .map_err(|e| e.to_string())?
-        .join("Mashiro");
-    Ok(dir.to_string_lossy().to_string())
+        .unwrap_or_else(|_| std::path::PathBuf::from("/storage/emulated/0/Music"))
+        .join("Mashiro")
+}
+
+#[tauri::command]
+pub fn default_download_dir(app: AppHandle) -> Result<String, String> {
+    Ok(base_audio_dir(&app).to_string_lossy().to_string())
 }
 
 fn resolve_dir(app: &AppHandle, dir: Option<String>) -> Result<std::path::PathBuf, String> {
     if let Some(custom) = dir.map(|d| d.trim().to_string()).filter(|d| !d.is_empty()) {
         return Ok(std::path::PathBuf::from(custom));
     }
-    Ok(app
-        .path()
-        .audio_dir()
-        .or_else(|_| app.path().download_dir())
-        .map_err(|e| e.to_string())?
-        .join("Mashiro"))
+    Ok(base_audio_dir(app))
 }
 
 #[tauri::command]
