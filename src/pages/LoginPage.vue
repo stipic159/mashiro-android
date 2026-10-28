@@ -68,7 +68,11 @@
               :user-code="userCode"
               :verify-url="verifyUrl"
               :copied="copied"
+              :url-copied="urlCopied"
               @copy="copyCode"
+              @copy-url="copyUrl"
+              @open="openBrowser"
+              @copy-and-open="copyAndOpen"
               @cancel="cancelAuto"
             />
             <LoginTokenForm
@@ -135,6 +139,7 @@ const autoError = ref("");
 const userCode = ref("");
 const verifyUrl = ref("");
 const copied = ref(false);
+const urlCopied = ref(false);
 let unlisteners: UnlistenFn[] = [];
 
 function extractToken(value: string): string {
@@ -184,6 +189,11 @@ async function loginAuto(): Promise<void> {
     userCode.value = info.user_code;
     verifyUrl.value = info.verification_url;
     waiting.value = true;
+    try {
+      await navigator.clipboard.writeText(info.user_code);
+      copied.value = true;
+      window.setTimeout(() => (copied.value = false), 2500);
+    } catch {}
   } catch {
     await stopWaiting();
     autoError.value =
@@ -192,6 +202,30 @@ async function loginAuto(): Promise<void> {
   } finally {
     starting.value = false;
   }
+}
+
+async function openBrowser(): Promise<void> {
+  if (!verifyUrl.value) return;
+  try {
+    const { api } = await import("@/api/client");
+    await api.openExternal(verifyUrl.value);
+  } catch {
+    window.open(verifyUrl.value, "_blank");
+  }
+}
+
+async function copyUrl(): Promise<void> {
+  if (!verifyUrl.value) return;
+  try {
+    await navigator.clipboard.writeText(verifyUrl.value);
+    urlCopied.value = true;
+    window.setTimeout(() => (urlCopied.value = false), 2000);
+  } catch {}
+}
+
+async function copyAndOpen(): Promise<void> {
+  await copyCode();
+  await openBrowser();
 }
 
 async function cancelAuto(): Promise<void> {

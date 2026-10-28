@@ -62,6 +62,13 @@ function load(): InterfaceSettings {
       localStorage.getItem(STORAGE_KEY) || "{}",
     ) as Partial<InterfaceSettings>;
     const merged: InterfaceSettings = { ...defaultInterfaceSettings, ...saved };
+    // Migrate v1: ensure autoplay on launch is disabled by default for existing users
+    if (localStorage.getItem("mashiro.autoplay_migrated_v1") !== "true") {
+      merged.resumeAutoplay = false;
+      try {
+        localStorage.setItem("mashiro.autoplay_migrated_v1", "true");
+      } catch {}
+    }
     merged.playerButtons = {
       ...defaultPlayerButtonSlots,
       ...(saved.playerButtons || {}),

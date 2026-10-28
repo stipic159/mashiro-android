@@ -17,5 +17,6 @@
 
 # Keep Jackson and Media3
 -keep class com.fasterxml.jackson.** { *; }
+-dontwarn java.beans.**
 -keep class androidx.media3.** { *; }
 -keepclassmembers class androidx.media3.** { *; }

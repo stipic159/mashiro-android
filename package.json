@@ -1,7 +1,7 @@
 {
   "name": "mashiro-android",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Mashiro - клиент Яндекс Музыки для Android",
   "type": "module",
   "scripts": {

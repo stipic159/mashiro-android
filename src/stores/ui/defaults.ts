@@ -178,5 +178,5 @@ export const defaultInterfaceSettings: InterfaceSettings = {
   censorBadge: true,
   aiTrackAction: "none",
   resumeLastSession: true,
-  resumeAutoplay: true,
+  resumeAutoplay: false,
 };

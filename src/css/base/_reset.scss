@@ -1,7 +1,20 @@
 html,
-body,
+body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  position: fixed;
+  inset: 0;
+  overscroll-behavior: none;
+}
+
 #q-app {
   height: 100%;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
 }
 
 :root {

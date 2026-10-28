@@ -61,7 +61,7 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity), MashiroMed
         this.mWebView = webView
     }
 
-    @Suppress("DEPRECATION")
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onDestroy() {
         if (MashiroMediaService.listener === this) {
             MashiroMediaService.listener = null
@@ -215,8 +215,8 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity), MashiroMed
                 id = json.optString("id", "")
                 title = json.optString("title", "")
                 artist = json.optString("artist", "")
-                album = if (json.has("album")) json.optString("album", null) else null
-                coverUrl = if (json.has("coverUrl")) json.optString("coverUrl", null) else null
+                album = if (json.has("album") && !json.isNull("album")) json.getString("album") else null
+                coverUrl = if (json.has("coverUrl") && !json.isNull("coverUrl")) json.getString("coverUrl") else null
                 streamUrl = json.optString("streamUrl", "")
             } catch (_: Exception) {}
         }
@@ -372,18 +372,27 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity), MashiroMed
             JSONObject(raw).optString("url", "")
         } catch (_: Exception) { "" }
         if (url.isNotEmpty()) {
-            try {
-                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            activity.runOnUiThread {
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    activity.startActivity(intent)
+                    invoke.resolve()
+                } catch (e: Exception) {
+                    try {
+                        val fallbackIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        activity.applicationContext.startActivity(fallbackIntent)
+                        invoke.resolve()
+                    } catch (e2: Exception) {
+                        Log.e("MediaPlugin", "Failed to openUrl: $url", e2)
+                        invoke.reject(e2.message ?: "Failed to open url")
+                    }
                 }
-                activity.startActivity(intent)
-                invoke.resolve()
-                return
-            } catch (e: Exception) {
-                Log.e("MediaPlugin", "Failed to openUrl: $url", e)
-                invoke.reject(e.message ?: "Failed to open url")
-                return
             }
+            return
         }
         invoke.reject("Empty url")
     }

@@ -22,8 +22,8 @@
     <div class="about-rows">
       <div class="about-row">
         <span class="about-key">Версия</span>
-        <span class="about-val flex items-center gap-2">
-          <span>0.5.0</span>
+        <span class="about-val about-version-val">
+          <span class="version-tag">{{ CURRENT_VERSION }}</span>
           <button
             type="button"
             class="btn-check-update"
@@ -92,7 +92,7 @@ import { onMounted, ref } from "vue";
 import { api } from "@/api/client";
 import { cachedImage, loadCachedImage } from "@/lib/imageCache";
 
-const CURRENT_VERSION = "0.5.0";
+const CURRENT_VERSION = "0.6.0";
 const REPO = "stipic159/mashiro-android";
 const AUTHOR_URL = "https://github.com/stipic159";
 const AVATAR_URL = "https://github.com/stipic159.png?size=200";
@@ -123,19 +123,28 @@ async function checkUpdates() {
   if (checkingUpdate.value) return;
   checkingUpdate.value = true;
   try {
-    const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=5`, {
       headers: { Accept: "application/vnd.github.v3+json" },
     });
     if (!res.ok) {
       throw new Error(`GitHub API вернул статус ${res.status}`);
     }
-    const data = await res.json();
-    const latestTag = (data.tag_name || "").trim();
-    if (compareVersions(latestTag, CURRENT_VERSION) > 0) {
+    const releases = await res.json();
+    if (!Array.isArray(releases) || releases.length === 0) {
+      updateInfo.value = null;
+      Notify.create({
+        type: "positive",
+        message: "У вас установлена последняя версия Mashiro!",
+      });
+      return;
+    }
+    const latest = releases.find((r: { draft?: boolean }) => !r.draft) || releases[0];
+    const latestTag = (latest?.tag_name || "").trim();
+    if (latestTag && compareVersions(latestTag, CURRENT_VERSION) > 0) {
       updateInfo.value = {
         version: latestTag,
-        url: data.html_url || `https://github.com/${REPO}/releases`,
-        body: data.body || "",
+        url: latest.html_url || `https://github.com/${REPO}/releases`,
+        body: latest.body || "",
       };
       Notify.create({
         type: "positive",
@@ -246,6 +255,7 @@ const credits = [
   gap: 12px;
   font-size: 13px;
   line-height: 1.45;
+  align-items: flex-start;
 }
 .about-key {
   flex: 0 0 110px;
@@ -253,6 +263,31 @@ const credits = [
 }
 .about-val {
   flex: 1 1 auto;
+  min-width: 0;
+}
+.about-version-val {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.version-tag {
+  font-weight: 600;
+  color: var(--fg, #fff);
+}
+@media (max-width: 600px) {
+  .about-row {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .about-key {
+    flex: none;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .about-version-val {
+    margin-top: 2px;
+  }
 }
 .about-block {
   margin-top: 26px;
@@ -290,10 +325,12 @@ const credits = [
   color: var(--fg-dim);
 }
 .btn-check-update {
-  margin-left: 8px;
-  padding: 4px 10px;
+  margin-left: 0;
+  padding: 5px 12px;
   font-size: 11px;
   font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
   border-radius: 999px;
   background: var(--surface-2, rgba(255, 255, 255, 0.08));
   border: 1px solid var(--line, rgba(255, 255, 255, 0.12));

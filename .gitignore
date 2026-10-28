@@ -52,6 +52,9 @@ pnpm-debug.log*
 .cache/
 .temp/
 coverage/
+.court/
+.agents/
+.claude/
 
 # editors / ide
 .vscode/*

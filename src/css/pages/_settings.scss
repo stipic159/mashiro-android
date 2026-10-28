@@ -325,14 +325,18 @@
 
 .settings-choice {
   display: flex;
+  flex-wrap: wrap;
   flex: 0 0 auto;
-  gap: 3px;
+  gap: 4px;
   padding: 3px;
   border-radius: calc(var(--radius) * 0.75);
   background: var(--surface-2);
 
   button {
-    min-width: 72px;
+    flex: 1 1 auto;
+    min-width: 68px;
+    white-space: nowrap;
+    text-align: center;
     padding: 6px 10px;
     border: 0;
     border-radius: calc(var(--radius) * 0.55);
@@ -362,6 +366,13 @@
   grid-template-columns: 56px 200px;
   align-items: center;
   gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .setting-slider-control {
+    width: 100%;
+    grid-template-columns: 48px minmax(0, 1fr) !important;
+  }
 }
 
 @mixin settings-nav-compact {
